@@ -1,10 +1,11 @@
 use std::sync::Arc;
 use tauri::State;
-use crate::config::{load_or_init_layout, save_layout_file, default_layout};
+use crate::config::{default_layout, load_or_init_layout, save_layout_file};
 use crate::db;
 use crate::models::{
-    CreateScheduleBlockInput, CreateTaskInput, DailyNote, DashboardMetrics,
-    HabitDay, LayoutConfig, ScheduleBlock, Task, TimeAllocationItem, UpdateTaskInput,
+    ActivitySummary, CreateHabitInput, CreateScheduleBlockInput, CreateTaskInput,
+    DailyNote, DashboardMetrics, Habit, HabitDay, LayoutConfig, ScheduleBlock,
+    Task, TimeAllocationItem, UpdateTaskInput,
 };
 use crate::AppState;
 
@@ -124,6 +125,13 @@ pub async fn save_daily_note(
     db::save_daily_note(&state.db, &date, &content_md).await.map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn get_daily_notes_dates(
+    state: State<'_, Arc<AppState>>,
+) -> Result<Vec<String>, String> {
+    db::get_daily_notes_dates(&state.db).await.map_err(|e| e.to_string())
+}
+
 // Analytics and Metrics
 #[tauri::command]
 pub async fn get_dashboard_metrics(
@@ -142,33 +150,45 @@ pub async fn get_time_allocation(
 }
 
 #[tauri::command]
-pub async fn get_habit_matrix(
-    _state: State<'_, Arc<AppState>>,
-    _start_date: String,
+pub async fn get_activity_summary(
+    state: State<'_, Arc<AppState>>,
+    date: String,
+) -> Result<ActivitySummary, String> {
+    db::get_activity_summary(&state.db, &date).await.map_err(|e| e.to_string())
+}
+
+// Habits commands (real SQLite persistence)
+#[tauri::command]
+pub async fn get_habits(
+    state: State<'_, Arc<AppState>>,
+    start_date: String,
 ) -> Result<Vec<HabitDay>, String> {
-    // Generate 7-day habit status for default habits
-    Ok(vec![
-        HabitDay {
-            habit_name: "Deep Focus (2h+)".to_string(),
-            days: vec![true, true, true, false, true, true, true],
-        },
-        HabitDay {
-            habit_name: "Morning Review".to_string(),
-            days: vec![true, true, true, true, true, false, true],
-        },
-        HabitDay {
-            habit_name: "Inbox Zero".to_string(),
-            days: vec![false, true, true, true, true, false, false],
-        },
-        HabitDay {
-            habit_name: "Read 20 pages".to_string(),
-            days: vec![true, true, false, true, true, true, true],
-        },
-        HabitDay {
-            habit_name: "Exercise / Walk".to_string(),
-            days: vec![true, false, true, true, false, true, false],
-        },
-    ])
+    db::get_habits_with_days(&state.db, &start_date).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_habit_matrix(
+    state: State<'_, Arc<AppState>>,
+    start_date: String,
+) -> Result<Vec<HabitDay>, String> {
+    db::get_habits_with_days(&state.db, &start_date).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn toggle_habit_day(
+    state: State<'_, Arc<AppState>>,
+    habit_id: String,
+    date: String,
+) -> Result<bool, String> {
+    db::toggle_habit_day(&state.db, &habit_id, &date).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn create_habit(
+    state: State<'_, Arc<AppState>>,
+    input: CreateHabitInput,
+) -> Result<Habit, String> {
+    db::create_habit(&state.db, &input.name).await.map_err(|e| e.to_string())
 }
 
 // Robust .ics parser
@@ -180,7 +200,6 @@ fn parse_ics_string(content: &str, default_date: Option<&str>) -> Vec<CreateSche
     let mut current_category: Option<String> = None;
     let mut in_vevent = false;
 
-    // Unfold lines (lines starting with space/tab are continuation)
     let mut unfolded_lines: Vec<String> = Vec::new();
     for line in content.lines() {
         if line.starts_with(' ') || line.starts_with('\t') {
@@ -203,7 +222,6 @@ fn parse_ics_string(content: &str, default_date: Option<&str>) -> Vec<CreateSche
             if in_vevent {
                 if let (Some(summary), Some(start)) = (current_summary.take(), current_dtstart.take()) {
                     let end = current_dtend.take().unwrap_or_else(|| {
-                        // Default to 1 hour after start
                         let (h, m) = parse_time_hh_mm(&start);
                         format!("{:02}:{:02}", (h + 1) % 24, m)
                     });
@@ -248,7 +266,6 @@ fn extract_prop(line: &str, prop_name: &str) -> Option<String> {
 }
 
 fn parse_date_yyyy_mm_dd(dt: &str) -> Option<String> {
-    // 20261105 or 20261105T090000Z
     let clean = dt.replace('-', "");
     if clean.len() >= 8 {
         let y = &clean[0..4];

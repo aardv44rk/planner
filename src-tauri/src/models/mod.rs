@@ -5,6 +5,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_workspace() -> String {
+    "focus".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Task {
     pub id: String,
@@ -83,11 +87,15 @@ pub struct WidgetConfig {
     pub h: u32,
     #[serde(default = "default_true")]
     pub visible: bool,
+    #[serde(default = "default_workspace")]
+    pub workspace: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayoutConfig {
     pub version: u32,
+    #[serde(default = "default_workspace")]
+    pub active_workspace: String,
     pub widgets: Vec<WidgetConfig>,
 }
 
@@ -115,8 +123,30 @@ pub struct TimeAllocationItem {
     pub percentage: f64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Habit {
+    pub id: String,
+    pub name: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateHabitInput {
+    pub name: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HabitDay {
+    pub id: String,
     pub habit_name: String,
     pub days: Vec<bool>, // 7 days (e.g. Mon-Sun)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActivitySummary {
+    pub total_focus_secs: i64,
+    pub tasks_completed_today: i64,
+    pub pending_tasks_count: i64,
+    pub active_streak_days: i64,
+    pub top_apps: Vec<TimeAllocationItem>,
 }

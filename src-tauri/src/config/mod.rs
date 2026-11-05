@@ -15,7 +15,8 @@ pub fn get_app_config_dir() -> Result<PathBuf, std::io::Error> {
 
 pub fn default_layout() -> LayoutConfig {
     LayoutConfig {
-        version: 1,
+        version: 3,
+        active_workspace: "focus".to_string(),
         widgets: vec![
             WidgetConfig {
                 id: "widget-kpis".to_string(),
@@ -26,6 +27,7 @@ pub fn default_layout() -> LayoutConfig {
                 w: 12,
                 h: 1,
                 visible: true,
+                workspace: "focus".to_string(),
             },
             WidgetConfig {
                 id: "widget-schedule".to_string(),
@@ -33,29 +35,21 @@ pub fn default_layout() -> LayoutConfig {
                 title: "Schedule & Agenda".to_string(),
                 x: 0,
                 y: 1,
-                w: 3,
-                h: 2,
+                w: 4,
+                h: 1,
                 visible: true,
+                workspace: "focus".to_string(),
             },
             WidgetConfig {
                 id: "widget-scratchpad".to_string(),
                 widget_type: "scratchpad".to_string(),
                 title: "Daily Scratchpad".to_string(),
-                x: 3,
+                x: 4,
                 y: 1,
-                w: 5,
+                w: 4,
                 h: 1,
                 visible: true,
-            },
-            WidgetConfig {
-                id: "widget-projects".to_string(),
-                widget_type: "projects".to_string(),
-                title: "Active Projects".to_string(),
-                x: 3,
-                y: 2,
-                w: 5,
-                h: 1,
-                visible: true,
+                workspace: "focus".to_string(),
             },
             WidgetConfig {
                 id: "widget-tasks".to_string(),
@@ -64,8 +58,20 @@ pub fn default_layout() -> LayoutConfig {
                 x: 8,
                 y: 1,
                 w: 4,
-                h: 2,
+                h: 1,
                 visible: true,
+                workspace: "focus".to_string(),
+            },
+            WidgetConfig {
+                id: "widget-projects".to_string(),
+                widget_type: "projects".to_string(),
+                title: "Active Projects".to_string(),
+                x: 4,
+                y: 2,
+                w: 4,
+                h: 1,
+                visible: false,
+                workspace: "full".to_string(),
             },
             WidgetConfig {
                 id: "widget-time-allocation".to_string(),
@@ -75,7 +81,8 @@ pub fn default_layout() -> LayoutConfig {
                 y: 3,
                 w: 4,
                 h: 1,
-                visible: true,
+                visible: false,
+                workspace: "analytics".to_string(),
             },
             WidgetConfig {
                 id: "widget-habit-matrix".to_string(),
@@ -85,7 +92,8 @@ pub fn default_layout() -> LayoutConfig {
                 y: 3,
                 w: 5,
                 h: 1,
-                visible: true,
+                visible: false,
+                workspace: "analytics".to_string(),
             },
             WidgetConfig {
                 id: "widget-quick-notes".to_string(),
@@ -95,7 +103,8 @@ pub fn default_layout() -> LayoutConfig {
                 y: 3,
                 w: 3,
                 h: 1,
-                visible: true,
+                visible: false,
+                workspace: "full".to_string(),
             },
         ],
     }
@@ -112,7 +121,16 @@ pub fn load_or_init_layout(config_dir: &Path) -> Result<LayoutConfig, Box<dyn st
 
     let contents = fs::read_to_string(&layout_file)?;
     match serde_json::from_str::<LayoutConfig>(&contents) {
-        Ok(layout) => Ok(layout),
+        Ok(layout) => {
+            // Migrate older layout versions (< 3) to static focus layout
+            if layout.version < 3 {
+                let def = default_layout();
+                let serialized = serde_json::to_string_pretty(&def)?;
+                let _ = fs::write(&layout_file, serialized);
+                return Ok(def);
+            }
+            Ok(layout)
+        }
         Err(err) => {
             eprintln!("Warning: failed to parse layout.json ({err}). Resetting to default.");
             let def = default_layout();

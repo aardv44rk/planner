@@ -1,20 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Sun,
-  Moon,
-  LayoutGrid,
   Search,
-  RotateCcw,
-  Sliders,
   Calendar,
+  Sliders,
 } from 'lucide-react';
-import { useThemeStore } from '../stores/themeStore';
 import { useLayoutStore } from '../stores/layoutStore';
 import { useCommandCenterStore } from '../stores/commandCenterStore';
 
 export const TopNav: React.FC = () => {
-  const { theme, toggleTheme } = useThemeStore();
-  const { isEditMode, toggleEditMode, resetLayout } = useLayoutStore();
+  const { activeWorkspace, isEditMode, toggleEditMode } = useLayoutStore();
   const { setCommandPaletteOpen, selectedDate } = useCommandCenterStore();
   const [formattedDate, setFormattedDate] = useState<string>('');
 
@@ -26,7 +20,6 @@ export const TopNav: React.FC = () => {
         weekday: 'short',
         month: 'short',
         day: 'numeric',
-        year: 'numeric',
       });
       setFormattedDate(str);
     } catch {
@@ -34,83 +27,60 @@ export const TopNav: React.FC = () => {
     }
   }, [selectedDate]);
 
+  const workspaceNames = {
+    focus: 'Focus View',
+    full: 'Full Dashboard',
+    analytics: 'Analytics View',
+  };
+
   return (
-    <header className="flex-shrink-0 w-full h-11 bg-surface border-b border-subtle px-3.5 flex items-center justify-between transition-colors duration-150 select-none">
-      {/* Left: App Title & Date Readout */}
-      <div className="flex items-center space-x-3">
-        <div className="flex items-center space-x-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-accent" />
-          <h1 className="text-sm font-semibold tracking-tight text-tx-primary">
-            Command Center
-          </h1>
-        </div>
+    <header className="flex-shrink-0 w-full h-10 bg-transparent px-3 flex items-center justify-between select-none">
+      {/* Left: Workspace breadcrumb & date */}
+      <div className="flex items-center space-x-2.5 text-xs">
+        <span className="font-semibold text-tx-primary tracking-tight">
+          LifeOS
+        </span>
         <span className="text-subtle text-xs">/</span>
-        <div className="flex items-center space-x-1 text-xs text-tx-muted">
-          <Calendar className="w-3.5 h-3.5" />
+        <span className="text-tx-muted font-medium text-[11px] capitalize">
+          {workspaceNames[activeWorkspace] || activeWorkspace}
+        </span>
+        <span className="text-subtle text-xs">·</span>
+        <div className="flex items-center space-x-1 text-tx-muted text-[11px]">
+          <Calendar className="w-3 h-3 text-tx-muted" />
           <span>{formattedDate}</span>
         </div>
       </div>
 
-      {/* Center: Search / Command Trigger */}
-      <div className="flex-1 max-w-md mx-4">
+      {/* Center: Slim Search / Command trigger */}
+      <div className="flex-1 max-w-sm mx-4">
         <button
           onClick={() => setCommandPaletteOpen(true)}
-          className="w-full flex items-center justify-between px-3 py-1.5 text-xs rounded border border-subtle bg-canvas/70 hover:bg-canvas hover:border-tx-muted/40 transition-colors text-tx-muted group"
-          title="Open Command Palette (Ctrl+K or Cmd+K)"
+          className="w-full flex items-center justify-between px-2.5 py-1 text-xs rounded border border-subtle/80 bg-surface/60 hover:bg-surface hover:border-tx-muted/40 transition-colors text-tx-muted group"
+          title="Open Command Palette (Ctrl+K)"
         >
           <div className="flex items-center space-x-2">
-            <Search className="w-3.5 h-3.5 text-tx-muted group-hover:text-tx-primary transition-colors" />
-            <span className="font-normal">
-              Search anything or type a command...
+            <Search className="w-3 h-3 text-tx-muted group-hover:text-tx-primary transition-colors" />
+            <span className="text-[11px]">
+              Search or type a command...
             </span>
           </div>
-          <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono rounded bg-elevated border border-subtle text-tx-muted">
+          <kbd className="px-1 py-0.2 text-[9px] font-mono rounded bg-elevated border border-subtle text-tx-muted">
             Ctrl+K
           </kbd>
         </button>
       </div>
 
-      {/* Right: Actions (Theme Toggle & Layout Customizer) */}
+      {/* Right: Customization Indicator */}
       <div className="flex items-center space-x-2">
         {isEditMode && (
           <button
-            onClick={() => resetLayout()}
-            className="flex items-center space-x-1.5 px-2.5 py-1 text-xs rounded border border-subtle bg-canvas hover:bg-elevated text-tx-muted hover:text-tx-primary transition-colors"
-            title="Reset layout to default"
+            onClick={toggleEditMode}
+            className="flex items-center space-x-1 px-2 py-0.5 text-[10px] rounded bg-accent text-white font-medium"
           >
-            <RotateCcw className="w-3 h-3" />
-            <span>Reset</span>
+            <Sliders className="w-3 h-3" />
+            <span>Editing Layout</span>
           </button>
         )}
-
-        <button
-          onClick={toggleEditMode}
-          className={`flex items-center space-x-1.5 px-2.5 py-1 text-xs rounded border transition-colors ${
-            isEditMode
-              ? 'bg-accent text-white border-accent'
-              : 'border-subtle bg-canvas hover:bg-elevated text-tx-muted hover:text-tx-primary'
-          }`}
-          title="Customize dashboard layout"
-        >
-          {isEditMode ? (
-            <Sliders className="w-3.5 h-3.5" />
-          ) : (
-            <LayoutGrid className="w-3.5 h-3.5" />
-          )}
-          <span>{isEditMode ? 'Done Editing' : 'Customize'}</span>
-        </button>
-
-        <button
-          onClick={toggleTheme}
-          className="p-1.5 rounded border border-subtle bg-canvas hover:bg-elevated text-tx-muted hover:text-tx-primary transition-colors"
-          title={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} Mode`}
-        >
-          {theme === 'light' ? (
-            <Moon className="w-4 h-4" />
-          ) : (
-            <Sun className="w-4 h-4 text-amber-400" />
-          )}
-        </button>
       </div>
     </header>
   );

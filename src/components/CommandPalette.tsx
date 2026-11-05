@@ -256,7 +256,7 @@ export const CommandPalette: React.FC = () => {
             </div>
 
             {/* Commands List */}
-            <div className="max-h-72 overflow-y-auto p-1.5 space-y-0.5">
+            <div data-scrollable="true" className="max-h-72 overflow-y-auto p-1.5 space-y-0.5">
               {filteredCommands.length === 0 ? (
                 <div className="py-8 text-center text-xs text-tx-muted">
                   No commands match "{query}"

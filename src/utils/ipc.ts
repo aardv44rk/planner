@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import {
+  ActivitySummary,
   CreateScheduleBlockInput,
   CreateTaskInput,
   DailyNote,
@@ -20,16 +21,17 @@ export const isTauri = (): boolean => {
 // Fallback in-memory storage for non-Tauri browser preview
 const fallbackDate = new Date().toISOString().split('T')[0];
 const fallbackLayout: LayoutConfig = {
-  version: 1,
+  version: 2,
+  active_workspace: 'focus',
   widgets: [
-    { id: 'widget-kpis', type: 'kpi_strip', title: 'Key Performance Indicators', x: 0, y: 0, w: 12, h: 1, visible: true },
-    { id: 'widget-schedule', type: 'schedule', title: 'Schedule & Agenda', x: 0, y: 1, w: 3, h: 2, visible: true },
-    { id: 'widget-scratchpad', type: 'scratchpad', title: 'Daily Scratchpad', x: 3, y: 1, w: 5, h: 1, visible: true },
-    { id: 'widget-projects', type: 'projects', title: 'Active Projects', x: 3, y: 2, w: 5, h: 1, visible: true },
-    { id: 'widget-tasks', type: 'tasks', title: "Today's Tasks", x: 8, y: 1, w: 4, h: 2, visible: true },
-    { id: 'widget-time-allocation', type: 'time_allocation', title: 'Time Allocation', x: 0, y: 3, w: 4, h: 1, visible: true },
-    { id: 'widget-habit-matrix', type: 'habit_matrix', title: 'Habit & Streak Grid', x: 4, y: 3, w: 5, h: 1, visible: true },
-    { id: 'widget-quick-notes', type: 'quick_notes', title: 'Quick Notes', x: 9, y: 3, w: 3, h: 1, visible: true },
+    { id: 'widget-kpis', type: 'kpi_strip', title: 'Key Performance Indicators', x: 0, y: 0, w: 12, h: 1, visible: true, workspace: 'focus' },
+    { id: 'widget-schedule', type: 'schedule', title: 'Schedule & Agenda', x: 0, y: 1, w: 4, h: 1, visible: true, workspace: 'focus' },
+    { id: 'widget-scratchpad', type: 'scratchpad', title: 'Daily Scratchpad', x: 4, y: 1, w: 4, h: 1, visible: true, workspace: 'focus' },
+    { id: 'widget-tasks', type: 'tasks', title: "Today's Tasks", x: 8, y: 1, w: 4, h: 1, visible: true, workspace: 'focus' },
+    { id: 'widget-projects', type: 'projects', title: 'Active Projects', x: 4, y: 2, w: 4, h: 1, visible: false, workspace: 'full' },
+    { id: 'widget-time-allocation', type: 'time_allocation', title: 'Time Allocation', x: 0, y: 3, w: 4, h: 1, visible: false, workspace: 'analytics' },
+    { id: 'widget-habit-matrix', type: 'habit_matrix', title: 'Habit & Streak Grid', x: 4, y: 3, w: 5, h: 1, visible: false, workspace: 'analytics' },
+    { id: 'widget-quick-notes', type: 'quick_notes', title: 'Quick Notes', x: 9, y: 3, w: 3, h: 1, visible: false, workspace: 'full' },
   ],
 };
 
@@ -55,6 +57,13 @@ let memoryNotes: Record<string, DailyNote> = {
     updated_at: new Date().toISOString(),
   },
 };
+let memoryHabits: HabitDay[] = [
+  { id: 'h1', habit_name: 'Deep Focus (2h+)', days: [true, true, true, false, true, true, true] },
+  { id: 'h2', habit_name: 'Morning Review', days: [true, true, true, true, true, false, true] },
+  { id: 'h3', habit_name: 'Inbox Zero', days: [false, true, true, true, true, false, false] },
+  { id: 'h4', habit_name: 'Read 20 pages', days: [true, true, false, true, true, true, true] },
+  { id: 'h5', habit_name: 'Exercise / Walk', days: [true, false, true, true, false, true, false] },
+];
 
 export const api = {
   // Layout
@@ -168,6 +177,10 @@ export const api = {
     memoryNotes[date] = updated;
     return updated;
   },
+  getDailyNotesDates: async (): Promise<string[]> => {
+    if (isTauri()) return await invoke<string[]>('get_daily_notes_dates');
+    return Object.keys(memoryNotes);
+  },
 
   // Analytics & Metrics
   getDashboardMetrics: async (date: string): Promise<DashboardMetrics> => {
@@ -194,15 +207,42 @@ export const api = {
       { category: 'Communication', minutes: 30, percentage: 10.0 },
     ];
   },
-  getHabitMatrix: async (startDate: string): Promise<HabitDay[]> => {
-    if (isTauri()) return await invoke<HabitDay[]>('get_habit_matrix', { startDate });
-    return [
-      { habit_name: 'Deep Focus (2h+)', days: [true, true, true, false, true, true, true] },
-      { habit_name: 'Morning Review', days: [true, true, true, true, true, false, true] },
-      { habit_name: 'Inbox Zero', days: [false, true, true, true, true, false, false] },
-      { habit_name: 'Read 20 pages', days: [true, true, false, true, true, true, true] },
-      { habit_name: 'Exercise / Walk', days: [true, false, true, true, false, true, false] },
-    ];
+  getActivitySummary: async (date: string): Promise<ActivitySummary> => {
+    if (isTauri()) return await invoke<ActivitySummary>('get_activity_summary', { date });
+    return {
+      total_focus_secs: 14400,
+      tasks_completed_today: 4,
+      pending_tasks_count: 3,
+      active_streak_days: 7,
+      top_apps: [
+        { category: 'Visual Studio Code', minutes: 165, percentage: 55.0 },
+        { category: 'Chrome', minutes: 60, percentage: 20.0 },
+        { category: 'Terminal', minutes: 45, percentage: 15.0 },
+      ],
+    };
+  },
+
+  // Habits with SQLite Persistence
+  getHabits: async (startDate: string): Promise<HabitDay[]> => {
+    if (isTauri()) return await invoke<HabitDay[]>('get_habits', { startDate });
+    return memoryHabits;
+  },
+  toggleHabitDay: async (habitId: string, date: string): Promise<boolean> => {
+    if (isTauri()) return await invoke<boolean>('toggle_habit_day', { habitId, date });
+    const habit = memoryHabits.find((h) => h.id === habitId);
+    if (habit) {
+      habit.days[0] = !habit.days[0];
+      return habit.days[0];
+    }
+    return true;
+  },
+  createHabit: async (name: string): Promise<void> => {
+    if (isTauri()) return await invoke<void>('create_habit', { input: { name } });
+    memoryHabits.push({
+      id: Math.random().toString(36).substring(2, 9),
+      habit_name: name,
+      days: [false, false, false, false, false, false, false],
+    });
   },
 
   // Event listener

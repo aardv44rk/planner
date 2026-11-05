@@ -27,7 +27,6 @@ export const ScheduleWidget: React.FC = () => {
   const [category, setCategory] = useState('Deep Work');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Compute 7 days for the current week centered on selectedDate
   const currentBaseDate = new Date(selectedDate);
   const weekDays = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(currentBaseDate);
@@ -84,17 +83,17 @@ export const ScheduleWidget: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full w-full bg-surface rounded border border-subtle p-2.5 select-none min-h-0 overflow-hidden">
-      {/* Header */}
-      <div className="flex-shrink-0 flex items-center justify-between pb-1.5 border-b border-subtle">
-        <div className="flex items-center space-x-2">
+    <div className="group flex flex-col h-full w-full bg-surface rounded border border-subtle p-2.5 select-none min-h-0 overflow-hidden">
+      {/* Quiet Header */}
+      <div className="flex-shrink-0 flex items-center justify-between pb-1 border-b border-subtle/50">
+        <div className="flex items-center space-x-1.5">
           <Clock className="w-3.5 h-3.5 text-accent" />
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-tx-primary">
+          <h2 className="text-[11px] font-medium uppercase tracking-wider text-tx-muted">
             Schedule & Agenda
           </h2>
         </div>
 
-        <div className="flex items-center space-x-1">
+        <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
           <input
             type="file"
             ref={fileInputRef}
@@ -104,15 +103,15 @@ export const ScheduleWidget: React.FC = () => {
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="p-1 rounded text-tx-muted hover:text-tx-primary hover:bg-elevated transition-colors"
+            className="p-0.5 rounded text-tx-muted hover:text-tx-primary hover:bg-elevated"
             title="Import .ics Calendar File"
           >
             <Upload className="w-3 h-3" />
           </button>
           <button
             onClick={() => setIsAdding(!isAdding)}
-            className="p-1 rounded text-tx-muted hover:text-tx-primary hover:bg-elevated transition-colors"
-            title="Add Schedule Block"
+            className="p-0.5 rounded text-tx-muted hover:text-tx-primary hover:bg-elevated"
+            title="Add Block"
           >
             <Plus className="w-3 h-3" />
           </button>
@@ -120,7 +119,7 @@ export const ScheduleWidget: React.FC = () => {
       </div>
 
       {/* Week Day Strip Selector */}
-      <div className="flex-shrink-0 flex items-center justify-between py-1.5 border-b border-subtle">
+      <div className="flex-shrink-0 flex items-center justify-between py-1 border-b border-subtle/40">
         <button
           onClick={handlePrevWeek}
           className="p-0.5 text-tx-muted hover:text-tx-primary rounded hover:bg-elevated"
@@ -222,15 +221,15 @@ export const ScheduleWidget: React.FC = () => {
         </form>
       )}
 
-      {/* Agenda List with internal scroll */}
-      <div className="flex-1 min-h-0 overflow-y-auto mt-1.5 space-y-1.5 pr-0.5">
+      {/* De-cluttered Agenda List with clean dividers (No nested boxes) */}
+      <div className="flex-1 min-h-0 overflow-hidden mt-1 divide-y divide-subtle/30 pr-0.5">
         {scheduleBlocks.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-tx-muted text-xs text-center p-4">
             <Calendar className="w-5 h-5 mb-1 opacity-40" />
             <span className="text-[11px]">No blocks for this date</span>
             <button
               onClick={() => setIsAdding(true)}
-              className="mt-1.5 text-[10px] text-accent hover:underline"
+              className="mt-1 text-[10px] text-accent hover:underline"
             >
               + Add block
             </button>
@@ -239,19 +238,20 @@ export const ScheduleWidget: React.FC = () => {
           scheduleBlocks.map((block) => (
             <div
               key={block.id}
-              className="group flex items-start justify-between p-1.5 rounded bg-canvas border border-subtle hover:border-tx-muted/30 transition-colors"
+              className="group/item flex items-center justify-between py-1.5 px-1 hover:bg-elevated/40 rounded transition-colors"
             >
-              <div className="flex items-start space-x-2 min-w-0">
-                <div className="flex flex-col text-[10px] font-mono font-medium text-accent pt-0.5 w-9 text-right flex-shrink-0">
+              <div className="flex items-center space-x-2 min-w-0">
+                <div className="flex items-center space-x-1 text-[10px] font-mono text-accent w-16 flex-shrink-0">
                   <span>{block.start_time}</span>
-                  <span className="text-[8px] text-tx-muted">{block.end_time}</span>
+                  <span className="text-tx-muted">-</span>
+                  <span className="text-tx-muted">{block.end_time}</span>
                 </div>
-                <div className="w-[2px] h-6 bg-subtle group-hover:bg-accent transition-colors rounded-full flex-shrink-0" />
-                <div className="min-w-0">
-                  <div className="text-[11px] font-medium text-tx-primary leading-tight truncate">
+                <div className="w-[1.5px] h-4 bg-accent/60 rounded-full flex-shrink-0" />
+                <div className="min-w-0 flex items-center space-x-2">
+                  <span className="text-[11px] font-medium text-tx-primary leading-tight truncate">
                     {block.title}
-                  </div>
-                  <span className="inline-block mt-0.5 text-[9px] px-1 py-0 rounded bg-elevated text-tx-muted font-mono">
+                  </span>
+                  <span className="text-[9px] px-1 py-0 rounded bg-elevated text-tx-muted font-mono flex-shrink-0">
                     {block.category}
                   </span>
                 </div>
@@ -259,7 +259,7 @@ export const ScheduleWidget: React.FC = () => {
 
               <button
                 onClick={() => deleteScheduleBlock(block.id)}
-                className="opacity-0 group-hover:opacity-100 p-0.5 text-tx-muted hover:text-red-500 rounded transition-opacity flex-shrink-0"
+                className="opacity-0 group-hover/item:opacity-100 p-0.5 text-tx-muted hover:text-red-500 rounded transition-opacity flex-shrink-0"
                 title="Delete block"
               >
                 <Trash2 className="w-3 h-3" />

@@ -58,10 +58,16 @@ pub fn run() {
             // Daily Notes
             commands::get_daily_note,
             commands::save_daily_note,
+            commands::get_daily_notes_dates,
             // Analytics
             commands::get_dashboard_metrics,
             commands::get_time_allocation,
+            commands::get_activity_summary,
+            // Habits
+            commands::get_habits,
             commands::get_habit_matrix,
+            commands::toggle_habit_day,
+            commands::create_habit,
         ])
         .run(tauri::generate_context!())
         .expect("Error while running LifeOS Command Center");

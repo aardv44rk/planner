@@ -4,7 +4,6 @@ import {
   Square,
   Plus,
   Trash2,
-  Tag,
 } from 'lucide-react';
 import { useCommandCenterStore } from '../../stores/commandCenterStore';
 import { TaskPriority } from '../../types';
@@ -15,6 +14,7 @@ export const TasksWidget: React.FC = () => {
   const [selectedProject, setSelectedProject] = useState('LifeOS');
   const [selectedPriority, setSelectedPriority] = useState<TaskPriority>('medium');
   const [filter, setFilter] = useState<'all' | 'active' | 'done'>('all');
+  const [isAdding, setIsAdding] = useState(false);
 
   const filteredTasks = tasks.filter((t) => {
     if (filter === 'active') return t.completed === 0;
@@ -37,103 +37,116 @@ export const TasksWidget: React.FC = () => {
       due_date: selectedDate,
     });
     setNewTitle('');
+    setIsAdding(false);
   };
 
-  const getPriorityColor = (p: TaskPriority) => {
+  const getPriorityBadge = (p: TaskPriority) => {
     switch (p) {
       case 'high':
-        return 'text-red-500 bg-red-500/10 border-red-500/20';
+        return <span className="w-1.5 h-1.5 rounded-full bg-red-500" title="High Priority" />;
       case 'medium':
-        return 'text-amber-500 bg-amber-500/10 border-amber-500/20';
+        return <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Medium Priority" />;
       case 'low':
-        return 'text-blue-500 bg-blue-500/10 border-blue-500/20';
+        return <span className="w-1.5 h-1.5 rounded-full bg-blue-400" title="Low Priority" />;
     }
   };
 
   return (
-    <div className="flex flex-col h-full w-full bg-surface rounded border border-subtle p-2.5 select-none min-h-0 overflow-hidden">
-      {/* Header */}
-      <div className="flex-shrink-0 flex items-center justify-between pb-1.5 border-b border-subtle">
+    <div className="group flex flex-col h-full w-full bg-surface rounded border border-subtle p-2.5 select-none min-h-0 overflow-hidden">
+      {/* Quiet Header */}
+      <div className="flex-shrink-0 flex items-center justify-between pb-1 border-b border-subtle/50">
         <div className="flex items-center space-x-1.5">
           <CheckSquare className="w-3.5 h-3.5 text-accent" />
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-tx-primary">
+          <h2 className="text-[11px] font-medium uppercase tracking-wider text-tx-muted">
             Today's Tasks
           </h2>
-          <span className="text-[9px] px-1.5 py-0.2 rounded bg-elevated text-tx-muted font-mono">
+          <span className="text-[9px] text-tx-muted font-mono">
             {completed}/{total}
           </span>
         </div>
 
-        {/* Filter buttons */}
-        <div className="flex items-center space-x-1 text-[10px]">
-          {(['all', 'active', 'done'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setFilter(tab)}
-              className={`px-1.5 py-0.2 rounded capitalize transition-colors ${
-                filter === tab
-                  ? 'bg-elevated font-medium text-tx-primary border border-subtle'
-                  : 'text-tx-muted hover:text-tx-primary'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
+        <div className="flex items-center space-x-1">
+          {/* Filter tabs */}
+          <div className="flex items-center space-x-0.5 text-[9px] mr-1">
+            {(['all', 'active', 'done'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setFilter(tab)}
+                className={`px-1.5 py-0.2 rounded capitalize transition-colors ${
+                  filter === tab
+                    ? 'bg-elevated font-semibold text-tx-primary'
+                    : 'text-tx-muted hover:text-tx-primary'
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => setIsAdding(!isAdding)}
+            className="p-0.5 rounded text-tx-muted hover:text-tx-primary hover:bg-elevated opacity-0 group-hover:opacity-100 transition-opacity"
+            title="New Task"
+          >
+            <Plus className="w-3 h-3" />
+          </button>
         </div>
       </div>
 
-      {/* Progress Bar */}
-      <div className="flex-shrink-0 w-full bg-canvas h-1 rounded-full overflow-hidden my-1.5 border border-subtle/50">
+      {/* Thin Progress line */}
+      <div className="flex-shrink-0 w-full bg-canvas h-[2px] rounded-full overflow-hidden my-1.5">
         <div
           className="bg-accent h-full transition-all duration-300 rounded-full"
           style={{ width: `${progressPct}%` }}
         />
       </div>
 
-      {/* Quick Add Inline Form */}
-      <form onSubmit={handleCreate} className="flex-shrink-0 mb-1.5">
-        <div className="flex items-center space-x-1 p-0.5 rounded bg-canvas border border-subtle focus-within:border-accent transition-colors">
-          <input
-            type="text"
-            placeholder="Add task and press Enter..."
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            className="flex-1 px-1.5 py-0.5 bg-transparent text-[11px] text-tx-primary placeholder:text-tx-muted/60 focus:outline-none"
-          />
+      {/* Inline Quick Add Form */}
+      {isAdding && (
+        <form onSubmit={handleCreate} className="flex-shrink-0 mb-1.5 p-1 rounded bg-canvas border border-subtle">
+          <div className="flex items-center space-x-1">
+            <input
+              type="text"
+              placeholder="Task title..."
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              className="flex-1 px-1.5 py-0.5 bg-transparent text-[11px] text-tx-primary placeholder:text-tx-muted/60 focus:outline-none"
+              autoFocus
+            />
 
-          <select
-            value={selectedProject}
-            onChange={(e) => setSelectedProject(e.target.value)}
-            className="px-1 py-0.5 text-[9px] rounded bg-surface border border-subtle text-tx-muted focus:outline-none"
-          >
-            <option value="LifeOS">LifeOS</option>
-            <option value="Work">Work</option>
-            <option value="Learning">Learning</option>
-            <option value="Personal">Personal</option>
-          </select>
+            <select
+              value={selectedProject}
+              onChange={(e) => setSelectedProject(e.target.value)}
+              className="px-1 py-0.2 text-[9px] rounded bg-surface border border-subtle text-tx-muted focus:outline-none"
+            >
+              <option value="LifeOS">LifeOS</option>
+              <option value="Work">Work</option>
+              <option value="Learning">Learning</option>
+              <option value="Personal">Personal</option>
+            </select>
 
-          <select
-            value={selectedPriority}
-            onChange={(e) => setSelectedPriority(e.target.value as TaskPriority)}
-            className="px-1 py-0.5 text-[9px] rounded bg-surface border border-subtle text-tx-muted focus:outline-none"
-          >
-            <option value="low">Low</option>
-            <option value="medium">Med</option>
-            <option value="high">High</option>
-          </select>
+            <select
+              value={selectedPriority}
+              onChange={(e) => setSelectedPriority(e.target.value as TaskPriority)}
+              className="px-1 py-0.2 text-[9px] rounded bg-surface border border-subtle text-tx-muted focus:outline-none"
+            >
+              <option value="low">Low</option>
+              <option value="medium">Med</option>
+              <option value="high">High</option>
+            </select>
 
-          <button
-            type="submit"
-            className="p-1 rounded bg-accent text-white hover:opacity-90 transition-opacity"
-            title="Create Task"
-          >
-            <Plus className="w-3 h-3" />
-          </button>
-        </div>
-      </form>
+            <button
+              type="submit"
+              className="px-1.5 py-0.5 rounded bg-accent text-white text-[10px] font-medium hover:opacity-90"
+            >
+              Add
+            </button>
+          </div>
+        </form>
+      )}
 
-      {/* Task List */}
-      <div className="flex-1 min-h-0 overflow-y-auto space-y-1 pr-0.5">
+      {/* De-cluttered List with subtle 1px dividers (No nested boxes) */}
+      <div className="flex-1 min-h-0 overflow-hidden divide-y divide-subtle/30 pr-0.5">
         {filteredTasks.length === 0 ? (
           <div className="h-full flex items-center justify-center text-tx-muted text-xs">
             No tasks match the filter.
@@ -144,9 +157,7 @@ export const TasksWidget: React.FC = () => {
             return (
               <div
                 key={task.id}
-                className={`group flex items-center justify-between p-1.5 rounded bg-canvas border border-subtle transition-all ${
-                  isDone ? 'opacity-60 bg-canvas/40' : 'hover:border-tx-muted/30'
-                }`}
+                className="group/item flex items-center justify-between py-1.5 px-1 hover:bg-elevated/40 rounded transition-colors"
               >
                 <div className="flex items-center space-x-2 flex-1 min-w-0">
                   <button
@@ -162,30 +173,23 @@ export const TasksWidget: React.FC = () => {
 
                   <span
                     className={`text-[11px] truncate text-tx-primary ${
-                      isDone ? 'line-through text-tx-muted' : ''
+                      isDone ? 'line-through text-tx-muted/60' : ''
                     }`}
                   >
                     {task.title}
                   </span>
                 </div>
 
-                <div className="flex items-center space-x-1.5 flex-shrink-0 ml-1.5">
-                  <span className="flex items-center space-x-0.5 text-[9px] px-1 py-0 rounded bg-elevated text-tx-muted font-mono">
-                    <Tag className="w-2 h-2" />
-                    <span>{task.project}</span>
+                <div className="flex items-center space-x-2 flex-shrink-0 ml-1.5">
+                  <span className="text-[9px] px-1 py-0 rounded bg-elevated/80 text-tx-muted font-mono">
+                    {task.project}
                   </span>
 
-                  <span
-                    className={`text-[8px] uppercase font-bold px-1 py-0 rounded border ${getPriorityColor(
-                      task.priority
-                    )}`}
-                  >
-                    {task.priority}
-                  </span>
+                  {getPriorityBadge(task.priority)}
 
                   <button
                     onClick={() => deleteTask(task.id)}
-                    className="opacity-0 group-hover:opacity-100 p-0.5 text-tx-muted hover:text-red-500 rounded transition-opacity"
+                    className="opacity-0 group-hover/item:opacity-100 p-0.5 text-tx-muted hover:text-red-500 rounded transition-opacity"
                     title="Delete task"
                   >
                     <Trash2 className="w-3 h-3" />

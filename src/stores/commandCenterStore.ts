@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import {
+  ActivitySummary,
   CreateScheduleBlockInput,
   CreateTaskInput,
   DailyNote,
@@ -21,6 +22,8 @@ interface CommandCenterState {
   metrics: DashboardMetrics | null;
   timeAllocation: TimeAllocationItem[];
   habitMatrix: HabitDay[];
+  notesHistory: string[];
+  activitySummary: ActivitySummary | null;
   selectedDate: string;
   isCommandPaletteOpen: boolean;
   isLoading: boolean;
@@ -44,11 +47,14 @@ interface CommandCenterState {
   // Daily Notes
   fetchDailyNote: (date?: string) => Promise<void>;
   saveDailyNote: (content: string) => Promise<void>;
+  fetchNotesHistory: () => Promise<void>;
 
   // Metrics & Activity
   fetchMetrics: () => Promise<void>;
   fetchTimeAllocation: () => Promise<void>;
   fetchHabitMatrix: () => Promise<void>;
+  toggleHabitDay: (habitId: string, date: string) => Promise<void>;
+  createHabit: (name: string) => Promise<void>;
 
   // Full Refresh
   refreshAll: () => Promise<void>;
@@ -61,6 +67,8 @@ export const useCommandCenterStore = create<CommandCenterState>((set, get) => ({
   metrics: null,
   timeAllocation: [],
   habitMatrix: [],
+  notesHistory: [],
+  activitySummary: null,
   selectedDate: getTodayString(),
   isCommandPaletteOpen: false,
   isLoading: false,
@@ -71,6 +79,7 @@ export const useCommandCenterStore = create<CommandCenterState>((set, get) => ({
     get().fetchDailyNote(date);
     get().fetchMetrics();
     get().fetchTimeAllocation();
+    get().fetchHabitMatrix();
   },
 
   setCommandPaletteOpen: (open: boolean) => set({ isCommandPaletteOpen: open }),
@@ -180,9 +189,19 @@ export const useCommandCenterStore = create<CommandCenterState>((set, get) => ({
     try {
       const dailyNote = await api.saveDailyNote(date, content);
       set({ dailyNote });
+      await get().fetchNotesHistory();
       await get().fetchMetrics();
     } catch (err) {
       console.error('Failed to save daily note:', err);
+    }
+  },
+
+  fetchNotesHistory: async () => {
+    try {
+      const notesHistory = await api.getDailyNotesDates();
+      set({ notesHistory });
+    } catch (err) {
+      console.error('Failed to fetch notes history:', err);
     }
   },
 
@@ -206,10 +225,28 @@ export const useCommandCenterStore = create<CommandCenterState>((set, get) => ({
 
   fetchHabitMatrix: async () => {
     try {
-      const habitMatrix = await api.getHabitMatrix(get().selectedDate);
+      const habitMatrix = await api.getHabits(get().selectedDate);
       set({ habitMatrix });
     } catch (err) {
       console.error('Failed to fetch habit matrix:', err);
+    }
+  },
+
+  toggleHabitDay: async (habitId: string, date: string) => {
+    try {
+      await api.toggleHabitDay(habitId, date);
+      await get().fetchHabitMatrix();
+    } catch (err) {
+      console.error('Failed to toggle habit day:', err);
+    }
+  },
+
+  createHabit: async (name: string) => {
+    try {
+      await api.createHabit(name);
+      await get().fetchHabitMatrix();
+    } catch (err) {
+      console.error('Failed to create habit:', err);
     }
   },
 
@@ -219,6 +256,7 @@ export const useCommandCenterStore = create<CommandCenterState>((set, get) => ({
       get().fetchTasks(),
       get().fetchSchedule(get().selectedDate),
       get().fetchDailyNote(get().selectedDate),
+      get().fetchNotesHistory(),
       get().fetchMetrics(),
       get().fetchTimeAllocation(),
       get().fetchHabitMatrix(),

@@ -8,6 +8,8 @@ export type WidgetType =
   | 'habit_matrix'
   | 'quick_notes';
 
+export type WorkspaceType = 'focus' | 'full' | 'analytics';
+
 export interface WidgetConfig {
   id: string;
   type: WidgetType;
@@ -17,10 +19,12 @@ export interface WidgetConfig {
   w: number;
   h: number;
   visible: boolean;
+  workspace?: string;
 }
 
 export interface LayoutConfig {
   version: number;
+  active_workspace?: string;
   widgets: WidgetConfig[];
 }
 
@@ -100,6 +104,15 @@ export interface TimeAllocationItem {
 }
 
 export interface HabitDay {
+  id: string;
   habit_name: string;
   days: boolean[];
+}
+
+export interface ActivitySummary {
+  total_focus_secs: number;
+  tasks_completed_today: number;
+  pending_tasks_count: number;
+  active_streak_days: number;
+  top_apps: TimeAllocationItem[];
 }
