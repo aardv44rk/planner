@@ -1,0 +1,47 @@
+## Node / Frontend
+/node_modules
+/dist
+/dist-ssr
+
+# Rust / Tauri Build Artifacts
+/src-tauri/target/
+
+# Local SQLite Database & Runtime Files
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Environment / Local Config Overrides (if any are added later)
+.env
+.env.local
+*.local Node / Frontend
+/node_modules
+/dist
+/dist-ssr
+
+# Rust / Tauri Build Artifacts
+/src-tauri/target/
+
+# Local SQLite Database & Runtime Files
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Environment / Local Config Overrides (if any are added later)
+.env
+.env.local
+*.local
