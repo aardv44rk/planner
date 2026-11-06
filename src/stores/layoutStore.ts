@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { arrayMove } from '@dnd-kit/sortable';
 import { AppTab, LayoutConfig, WidgetConfig, WidgetType } from '../types';
 import { api } from '../utils/ipc';
 
@@ -29,6 +30,7 @@ interface LayoutState {
   setSelectedWidgetId: (id: string | null) => void;
 
   fetchLayout: () => Promise<void>;
+  reorderWidgets: (activeId: string, overId: string) => Promise<void>;
   swapWidgets: (idA: string, idB: string) => Promise<void>;
   updateWidgetPosition: (id: string, updates: Partial<WidgetConfig>) => Promise<void>;
   toggleWidgetVisibility: (id: string) => Promise<void>;
@@ -163,47 +165,49 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     await get().setWidgetPin(id, visible);
   },
 
-  swapWidgets: async (idA: string, idB: string) => {
+  reorderWidgets: async (activeId: string, overId: string) => {
     const { layout } = get();
     if (!layout) return;
 
-    const idxA = layout.widgets.findIndex((w) => w.id === idA);
-    const idxB = layout.widgets.findIndex((w) => w.id === idB);
-    if (idxA === -1 || idxB === -1) return;
+    const oldIndex = layout.widgets.findIndex((w) => w.id === activeId);
+    const newIndex = layout.widgets.findIndex((w) => w.id === overId);
+    if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
 
-    const wA = { ...layout.widgets[idxA] };
-    const wB = { ...layout.widgets[idxB] };
+    // Use arrayMove directly on the master layout.widgets array
+    const newWidgets = arrayMove(layout.widgets, oldIndex, newIndex);
 
-    const tempX = wA.x;
-    const tempY = wA.y;
-    const tempW = wA.w;
-    const tempH = wA.h;
-
-    wA.x = wB.x;
-    wA.y = wB.y;
-    wA.w = wB.w;
-    wA.h = wB.h;
-
-    wB.x = tempX;
-    wB.y = tempY;
-    wB.w = tempW;
-    wB.h = tempH;
-
-    const newWidgets = [...layout.widgets];
-    newWidgets[idxA] = wA;
-    newWidgets[idxB] = wB;
+    // Recompute sequential (x, y) coordinates for grid serialization
+    let curX = 0;
+    let curY = 0;
+    let rowH = 0;
+    const updatedWidgets = newWidgets.map((w) => {
+      if (!w.visible) return w;
+      if (curX + w.w > 12) {
+        curX = 0;
+        curY += rowH;
+        rowH = 0;
+      }
+      const updated = { ...w, x: curX, y: curY };
+      curX += w.w;
+      rowH = Math.max(rowH, w.h);
+      return updated;
+    });
 
     const updatedLayout: LayoutConfig = {
       ...layout,
-      widgets: newWidgets,
+      widgets: updatedWidgets,
     };
 
     set({ layout: updatedLayout, selectedWidgetId: null });
     try {
       await api.saveLayout(updatedLayout);
     } catch (err) {
-      console.error('Failed to persist swapped layout:', err);
+      console.error('Failed to persist reordered layout:', err);
     }
+  },
+
+  swapWidgets: async (idA: string, idB: string) => {
+    await get().reorderWidgets(idA, idB);
   },
 
   updateWidgetPosition: async (id: string, updates: Partial<WidgetConfig>) => {
@@ -229,7 +233,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
 
   resizeWidget: async (id: string, w: number, h: number) => {
     const clampedW = Math.max(3, Math.min(12, w));
-    const clampedH = Math.max(1, Math.min(10, h));
+    const clampedH = Math.max(1, Math.min(8, h));
     await get().updateWidgetPosition(id, { w: clampedW, h: clampedH });
   },
 

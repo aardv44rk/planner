@@ -1,5 +1,4 @@
 import React from 'react';
-import { FolderKanban } from 'lucide-react';
 import { useCommandCenterStore } from '../../stores/commandCenterStore';
 
 export const ProjectsWidget: React.FC = () => {
@@ -27,17 +26,10 @@ export const ProjectsWidget: React.FC = () => {
   }));
 
   return (
-    <div className="flex flex-col h-full w-full bg-surface rounded border border-subtle p-2.5 select-none min-h-0 overflow-hidden">
-      <div className="flex-shrink-0 flex items-center justify-between pb-1 border-b border-subtle/50">
-        <div className="flex items-center space-x-1.5">
-          <FolderKanban className="w-3.5 h-3.5 text-accent" />
-          <h2 className="text-[11px] font-medium uppercase tracking-wider text-tx-muted">
-            Active Projects
-          </h2>
-        </div>
-        <span className="text-[9px] text-tx-muted font-mono">
-          {projects.length} Active
-        </span>
+    <div className="flex flex-col h-full w-full p-2.5 select-none min-h-0 overflow-hidden">
+      <div className="flex-shrink-0 flex items-center justify-between pb-1 border-b border-subtle/40 text-[10px] text-tx-muted font-mono">
+        <span>Project Overview</span>
+        <span>{projects.length} Active</span>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar divide-y divide-subtle/30 mt-1 pr-1">

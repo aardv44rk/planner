@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, Check, Plus } from 'lucide-react';
+import { Check, Plus } from 'lucide-react';
 import { useCommandCenterStore } from '../../stores/commandCenterStore';
 
 export const HabitMatrixWidget: React.FC = () => {
@@ -30,25 +30,20 @@ export const HabitMatrixWidget: React.FC = () => {
   };
 
   return (
-    <div className="group flex flex-col h-full w-full bg-surface rounded border border-subtle p-2.5 select-none min-h-0 overflow-hidden">
-      {/* Quiet Header */}
-      <div className="flex-shrink-0 flex items-center justify-between pb-1 border-b border-subtle/50">
-        <div className="flex items-center space-x-1.5">
-          <Sparkles className="w-3.5 h-3.5 text-accent" />
-          <h2 className="text-[11px] font-medium uppercase tracking-wider text-tx-muted">
-            Habit & Streak Grid
-          </h2>
-        </div>
+    <div className="flex flex-col h-full w-full p-2.5 select-none min-h-0 overflow-hidden">
+      {/* Sub Toolbar: Habit count & Add button */}
+      <div className="flex-shrink-0 flex items-center justify-between pb-1 border-b border-subtle/40">
+        <span className="text-[10px] text-tx-muted font-mono">
+          Weekly Habits ({habitMatrix.length})
+        </span>
 
-        <div className="flex items-center space-x-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            onClick={() => setIsAdding(!isAdding)}
-            className="p-0.5 rounded text-tx-muted hover:text-tx-primary hover:bg-elevated"
-            title="Add Habit"
-          >
-            <Plus className="w-3 h-3" />
-          </button>
-        </div>
+        <button
+          onClick={() => setIsAdding(!isAdding)}
+          className="p-0.5 rounded text-tx-muted hover:text-tx-primary hover:bg-elevated transition-colors"
+          title="Add Habit"
+        >
+          <Plus className="w-3 h-3" />
+        </button>
       </div>
 
       {/* Add Habit Form */}
@@ -71,7 +66,7 @@ export const HabitMatrixWidget: React.FC = () => {
         </form>
       )}
 
-      {/* Habits List with clean dividers (no nested boxes) */}
+      {/* Habits List */}
       <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar mt-1 pr-1">
         {/* Days Header */}
         <div className="flex items-center justify-between py-0.5 border-b border-subtle/40 text-[9px] text-tx-muted font-mono">

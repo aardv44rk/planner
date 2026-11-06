@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileEdit, Check, RefreshCw } from 'lucide-react';
+import { Check, RefreshCw } from 'lucide-react';
 import { useCommandCenterStore } from '../../stores/commandCenterStore';
 
 export const ScratchpadWidget: React.FC = () => {
@@ -35,18 +35,12 @@ export const ScratchpadWidget: React.FC = () => {
   const chars = content.length;
 
   return (
-    <div className="flex flex-col h-full w-full bg-surface rounded border border-subtle p-2.5 select-none min-h-0 overflow-hidden">
-      {/* Quiet Header */}
-      <div className="flex-shrink-0 flex items-center justify-between pb-1 border-b border-subtle/50">
-        <div className="flex items-center space-x-1.5">
-          <FileEdit className="w-3.5 h-3.5 text-accent" />
-          <h2 className="text-[11px] font-medium uppercase tracking-wider text-tx-muted">
-            Daily Scratchpad
-          </h2>
-          <span className="text-[10px] text-tx-muted font-mono">
-            {selectedDate}
-          </span>
-        </div>
+    <div className="flex flex-col h-full w-full p-2.5 select-none min-h-0 overflow-hidden">
+      {/* Sub Toolbar: Word count & Save status */}
+      <div className="flex-shrink-0 flex items-center justify-between pb-1 border-b border-subtle/40">
+        <span className="text-[10px] text-tx-muted font-mono">
+          {selectedDate}
+        </span>
 
         <div className="flex items-center space-x-2">
           <span className="text-[9px] text-tx-muted font-mono">

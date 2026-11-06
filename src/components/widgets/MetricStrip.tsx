@@ -10,8 +10,8 @@ interface SparklineProps {
 const Sparkline: React.FC<SparklineProps> = ({ data, strokeColor = 'var(--accent)' }) => {
   if (!data || data.length < 2) return null;
 
-  const width = 64;
-  const height = 20;
+  const width = 56;
+  const height = 18;
   const min = Math.min(...data);
   const max = Math.max(...data);
   const range = max - min || 1;
@@ -38,7 +38,11 @@ const Sparkline: React.FC<SparklineProps> = ({ data, strokeColor = 'var(--accent
   );
 };
 
-export const MetricStrip: React.FC = () => {
+export interface MetricStripProps {
+  colSpan?: number;
+}
+
+export const MetricStrip: React.FC<MetricStripProps> = ({ colSpan }) => {
   const { metrics, tasks } = useCommandCenterStore();
 
   const totalTasks = tasks.length;
@@ -54,7 +58,7 @@ export const MetricStrip: React.FC = () => {
 
   const cards = [
     {
-      label: 'Focus Time Today',
+      label: 'Focus Today',
       value: focusTimeDisplay,
       subtitle: '+12% vs avg',
       icon: Clock,
@@ -62,7 +66,7 @@ export const MetricStrip: React.FC = () => {
       color: 'var(--accent)',
     },
     {
-      label: 'Tasks Completed',
+      label: 'Tasks Done',
       value: `${completedTasks} / ${totalTasks}`,
       subtitle: `${totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0}% done`,
       icon: CheckCircle2,
@@ -78,7 +82,7 @@ export const MetricStrip: React.FC = () => {
       color: '#F59E0B',
     },
     {
-      label: 'Pending Items',
+      label: 'Pending',
       value: `${pendingTasks} Tasks`,
       subtitle: 'Ready to tackle',
       icon: AlertCircle,
@@ -87,38 +91,50 @@ export const MetricStrip: React.FC = () => {
     },
   ];
 
-  return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full h-[100px] max-h-[100px] select-none">
-      {cards.map((card, i) => {
-        const Icon = card.icon;
-        return (
-          <div
-            key={i}
-            className="flex items-center justify-between px-3 py-2 rounded bg-surface border border-subtle hover:border-tx-muted/30 transition-colors h-[100px] max-h-[100px] overflow-hidden"
-          >
-            <div className="flex flex-col justify-center min-w-0 pr-2">
-              <div className="flex items-center space-x-1.5 text-tx-muted mb-0.5">
-                <Icon className="w-3.5 h-3.5 text-accent flex-shrink-0" />
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-tx-muted truncate">
-                  {card.label}
-                </span>
-              </div>
-              <div className="flex items-baseline space-x-2">
-                <span className="text-lg font-bold tracking-tight text-tx-primary leading-tight">
-                  {card.value}
-                </span>
-                <span className="text-[10px] text-tx-muted truncate">
-                  {card.subtitle}
-                </span>
-              </div>
-            </div>
+  // Responsive grid columns based on colSpan prop or CSS container queries
+  const getGridColsClass = () => {
+    if (colSpan !== undefined) {
+      if (colSpan >= 10) return 'grid-cols-4';
+      if (colSpan >= 6) return 'grid-cols-2';
+      return 'grid-cols-1';
+    }
+    return 'grid-cols-1 @[360px]:grid-cols-2 @[720px]:grid-cols-4';
+  };
 
-            <div className="flex-shrink-0">
-              <Sparkline data={card.sparkline} strokeColor={card.color} />
+  return (
+    <div className="@container w-full h-full p-2.5 min-h-0 overflow-y-auto custom-scrollbar select-none">
+      <div className={`grid ${getGridColsClass()} gap-2.5 w-full h-full min-h-0 items-stretch`}>
+        {cards.map((card, i) => {
+          const Icon = card.icon;
+          return (
+            <div
+              key={i}
+              className="flex items-center justify-between px-3 py-2 rounded bg-surface/80 border border-subtle/80 hover:border-tx-muted/30 transition-colors min-h-[64px] min-w-0 overflow-hidden"
+            >
+              <div className="flex flex-col justify-center min-w-0 pr-2 flex-1">
+                <div className="flex items-center space-x-1.5 text-tx-muted mb-0.5 min-w-0">
+                  <Icon className="w-3.5 h-3.5 text-accent flex-shrink-0" />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-tx-muted truncate">
+                    {card.label}
+                  </span>
+                </div>
+                <div className="flex items-baseline space-x-1.5 min-w-0 flex-wrap">
+                  <span className="text-base font-bold tracking-tight text-tx-primary leading-tight font-mono truncate">
+                    {card.value}
+                  </span>
+                  <span className="text-[9px] text-tx-muted truncate min-w-0">
+                    {card.subtitle}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex-shrink-0">
+                <Sparkline data={card.sparkline} strokeColor={card.color} />
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 };

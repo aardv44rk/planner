@@ -52,22 +52,16 @@ export const TasksWidget: React.FC = () => {
   };
 
   return (
-    <div className="group flex flex-col h-full w-full bg-surface rounded border border-subtle p-2.5 select-none min-h-0 overflow-hidden">
-      {/* Quiet Header */}
-      <div className="flex-shrink-0 flex items-center justify-between pb-1 border-b border-subtle/50">
-        <div className="flex items-center space-x-1.5">
-          <CheckSquare className="w-3.5 h-3.5 text-accent" />
-          <h2 className="text-[11px] font-medium uppercase tracking-wider text-tx-muted">
-            Today's Tasks
-          </h2>
-          <span className="text-[9px] text-tx-muted font-mono">
-            {completed}/{total}
-          </span>
-        </div>
+    <div className="flex flex-col h-full w-full p-2.5 select-none min-h-0 overflow-hidden">
+      {/* Sub Toolbar: Status & Filters */}
+      <div className="flex-shrink-0 flex items-center justify-between pb-1 border-b border-subtle/40">
+        <span className="text-[10px] text-tx-muted font-mono">
+          {completed}/{total} ({progressPct}%)
+        </span>
 
         <div className="flex items-center space-x-1">
           {/* Filter tabs */}
-          <div className="flex items-center space-x-0.5 text-[9px] mr-1">
+          <div className="flex items-center space-x-0.5 text-[9px] mr-1 bg-canvas/60 rounded p-0.5 border border-subtle/40">
             {(['all', 'active', 'done'] as const).map((tab) => (
               <button
                 key={tab}
@@ -85,7 +79,7 @@ export const TasksWidget: React.FC = () => {
 
           <button
             onClick={() => setIsAdding(!isAdding)}
-            className="p-0.5 rounded text-tx-muted hover:text-tx-primary hover:bg-elevated opacity-0 group-hover:opacity-100 transition-opacity"
+            className="p-0.5 rounded text-tx-muted hover:text-tx-primary hover:bg-elevated transition-colors"
             title="New Task"
           >
             <Plus className="w-3 h-3" />
@@ -145,7 +139,7 @@ export const TasksWidget: React.FC = () => {
         </form>
       )}
 
-      {/* De-cluttered List with subtle 1px dividers (No nested boxes) */}
+      {/* Tasks List */}
       <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar divide-y divide-subtle/30 pr-1">
         {filteredTasks.length === 0 ? (
           <div className="h-full flex items-center justify-center text-tx-muted text-xs">
