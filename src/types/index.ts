@@ -8,19 +8,21 @@ export type WidgetType =
   | 'habit_matrix'
   | 'quick_notes';
 
-export type AppTab = 'home' | 'tasks' | 'schedule' | 'notes' | 'habits';
+export type AppTab = 'today' | 'courses' | 'tasks' | 'schedule' | 'notes' | 'habits' | 'home';
 
-export type WorkspaceType = 'home' | 'focus' | 'full' | 'analytics' | 'dashboard';
+export type WorkspaceType = 'today' | 'courses' | 'home' | 'focus' | 'full' | 'analytics' | 'dashboard';
 
 export interface WidgetConfig {
   id: string;
   type: WidgetType;
   title: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  visible: boolean;
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+  minW?: number;
+  minH?: number;
+  visible?: boolean;
   workspace?: string;
 }
 
@@ -34,6 +36,8 @@ export type GridSlot = {
 export interface LayoutConfig {
   version: number;
   active_workspace?: string;
+  sidebar_collapsed?: boolean;
+  pane_sizes?: Record<string, number>;
   widgets?: WidgetConfig[];
   slots?: GridSlot[];
   workspaces?: Record<string, WidgetConfig[]>;

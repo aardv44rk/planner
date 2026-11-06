@@ -4,25 +4,258 @@
 
 @layer base {
   :root {
-    --bg-canvas: #F5F4F0;
-    --bg-surface: #ECEAE4;
-    --bg-elevated: #E3E0D6;
-    --border-subtle: #DCD9D0;
-    --text-primary: #1C1B18;
-    --text-muted: #6E6B63;
-    --accent: #A85A32;
-    --accent-hover: #8F4C29;
+    /* Reference Design Tokens (tokens.css) - Warm Neutral Light Theme */
+    --bg: #f3f3f0; /** Window background, warm neutral */
+    --surface: #ffffff;
+    --surface-2: #f7f7f4;
+    --surface-3: #eeeeea;
+    --line: #e3e3de;
+    --line-strong: #cfcfc8;
+    --ink: #1d1e1c;
+    --muted: #6f716c;
+    --accent: #2f5fd0; /** Campus blue */
+    --accent-ink: #ffffff;
+    --accent-soft: #e6edfc;
+    --accent-hover: #254eb0;
+    --danger: #b3382b;
+    --danger-soft: #fbe9e6;
+    --warn: #8a5a0b;
+    --warn-soft: #fff3d6;
+    --ok: #24733f;
+    --ok-soft: #e1f3e7;
+    --hero-lightness: 0.965;
+    --hero-chroma: 0.022;
+    --hero-fade: 0.45;
+    --shadow: 0px 1px 2px 0px #0000000a, 0px 8px 24px 0px #0000000d;
+    --course-tint-fill: 22%;
+    --course-tint-soft: 10%;
+    --course-tint-exam: 34%;
+    --course-tint-ink: 40%;
+    --course-on-solid: #ffffff;
+
+    /* Exact border radius scale from tokens.css */
+    --radius-chip: 6px;
+    --radius-block: 6px;
+    --radius-column: 10px;
+    --radius-control: 10px;
+    --radius-surface: 12px;
+    --radius-panel: 20px;
+    --radius: var(--radius-surface);
+
+    /* Typography scale and exact font-sans stack from tokens.css */
+    --font-sans: Inter, -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Yu Gothic UI', system-ui, sans-serif;
+    --type-display-size: 40px;
+    --type-display-weight: 700;
+    --type-title-size: 19px;
+    --type-title-weight: 700;
+    --type-section-size: 12px;
+    --type-section-weight: 600;
+    --type-row-size: 14px;
+    --type-row-weight: 500;
+    --type-note-size: 12px;
+    --type-note-weight: 400;
+    --type-block-size: 11px;
+    --type-block-weight: 600;
+    --type-tick-size: 10px;
+    --type-tick-weight: 400;
+
+    /* Workspace geometry & rail dimensions from tokens.css & styles.css */
+    --workspace-bar-height: 42px;
+    --workspace-control-height: 30px;
+    --workspace-gutter: 12px;
+    --workspace-splitter-width: 20px;
+    --space-gutter: 20px;
+    --space-row-x: 16px;
+    --space-row-y: 10px;
+    --space-row-gap: 12px;
+    --space-card: 18px;
+    --rail: 72px;
+    --text: 1;
+
+    /* Motion easing and durations from tokens.css */
+    --motion-duration-fast: 150ms;
+    --motion-duration-base: 200ms;
+    --motion-duration-slow: 250ms;
+    --motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+    --motion-easing-emphasized: cubic-bezier(0.22, 1, 0.36, 1);
+
+    /* Interaction states from ui.css */
+    --state-hover: color-mix(in srgb, var(--ink) 5%, transparent);
+    --state-press: color-mix(in srgb, var(--ink) 10%, transparent);
+
+    /* Semantic Tailwind-compatible variables */
+    --bg-canvas: var(--bg);
+    --bg-surface: var(--surface);
+    --bg-surface-2: var(--surface-2);
+    --bg-elevated: var(--surface-3);
+    --border-subtle: var(--line);
+    --border-strong: var(--line-strong);
+    --text-primary: var(--ink);
+    --text-muted: var(--muted);
   }
 
-  .dark {
-    --bg-canvas: #111214;
-    --bg-surface: #18191C;
-    --bg-elevated: #222428;
-    --border-subtle: #26282D;
-    --text-primary: #E5E7EB;
-    --text-muted: #8E95A2;
-    --accent: #E07A5F;
-    --accent-hover: #F28E73;
+  .dark,
+  :root[data-appearance="dark"] {
+    color-scheme: dark;
+    --bg: #141515;
+    --surface: #1d1e1e;
+    --surface-2: #232525;
+    --surface-3: #2b2d2d;
+    --line: #2f3131;
+    --line-strong: #3d4040;
+    --ink: #ececea;
+    --muted: #9a9c98;
+    --accent: #6f95f0;
+    --accent-ink: #0d1424;
+    --accent-soft: #23304d;
+    --accent-hover: #82a5f5;
+    --danger: #e2685a;
+    --danger-soft: #3a2320;
+    --warn: #e0ad4a;
+    --warn-soft: #3a2f16;
+    --ok: #6fc48b;
+    --ok-soft: #1e3526;
+    --hero-lightness: 0.265;
+    --hero-chroma: 0.028;
+    --hero-fade: 0.45;
+    --shadow: 0px 1px 2px 0px #00000040, 0px 8px 24px 0px #00000050;
+    --state-hover: color-mix(in srgb, var(--ink) 5%, transparent);
+    --state-press: color-mix(in srgb, var(--ink) 10%, transparent);
+
+    /* Semantic Tailwind-compatible variables */
+    --bg-canvas: var(--bg);
+    --bg-surface: var(--surface);
+    --bg-surface-2: var(--surface-2);
+    --bg-elevated: var(--surface-3);
+    --border-subtle: var(--line);
+    --border-strong: var(--line-strong);
+    --text-primary: var(--ink);
+    --text-muted: var(--muted);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-appearance="light"]):not(.light) {
+      color-scheme: dark;
+      --bg: #141515;
+      --surface: #1d1e1e;
+      --surface-2: #232525;
+      --surface-3: #2b2d2d;
+      --line: #2f3131;
+      --line-strong: #3d4040;
+      --ink: #ececea;
+      --muted: #9a9c98;
+      --accent: #6f95f0;
+      --accent-ink: #0d1424;
+      --accent-soft: #23304d;
+      --accent-hover: #82a5f5;
+      --danger: #e2685a;
+      --danger-soft: #3a2320;
+      --warn: #e0ad4a;
+      --warn-soft: #3a2f16;
+      --ok: #6fc48b;
+      --ok-soft: #1e3526;
+      --hero-lightness: 0.265;
+      --hero-chroma: 0.028;
+      --hero-fade: 0.45;
+      --shadow: 0px 1px 2px 0px #00000040, 0px 8px 24px 0px #00000050;
+      --state-hover: color-mix(in srgb, var(--ink) 5%, transparent);
+      --state-press: color-mix(in srgb, var(--ink) 10%, transparent);
+
+      --bg-canvas: var(--bg);
+      --bg-surface: var(--surface);
+      --bg-surface-2: var(--surface-2);
+      --bg-elevated: var(--surface-3);
+      --border-subtle: var(--line);
+      --border-strong: var(--line-strong);
+      --text-primary: var(--ink);
+      --text-muted: var(--muted);
+    }
+  }
+
+  /* Optional Theme Overrides from themes.css */
+  :root[data-theme="cool"] {
+    --bg: #f2f2f7;
+    --surface: #ffffff;
+    --surface-2: #f6f6fa;
+    --surface-3: #eeeef3;
+    --line: #e5e5ea;
+    --line-strong: #d1d1d6;
+    --ink: #1c1c1e;
+    --muted: #6d6d70;
+  }
+  :root[data-theme="cool"][data-appearance="dark"],
+  .dark[data-theme="cool"] {
+    --bg: #000000;
+    --surface: #1c1c1e;
+    --surface-2: #212123;
+    --surface-3: #28282a;
+    --line: #2c2c2e;
+    --line-strong: #3a3a3c;
+    --ink: #f2f2f7;
+    --muted: #969699;
+  }
+  :root[data-theme="paper"] {
+    --bg: #f3eee4;
+    --surface: #fffdf8;
+    --surface-2: #f7f3eb;
+    --surface-3: #efe9de;
+    --line: #e5ddcf;
+    --line-strong: #d2cabd;
+    --ink: #2a241b;
+    --muted: #767167;
+  }
+  :root[data-theme="paper"][data-appearance="dark"],
+  .dark[data-theme="paper"] {
+    --bg: #16130e;
+    --surface: #211d17;
+    --surface-2: #27221b;
+    --surface-3: #2e2921;
+    --line: #332d24;
+    --line-strong: #403a31;
+    --ink: #efe8dc;
+    --muted: #9d978e;
+  }
+  :root[data-theme="mist"] {
+    --bg: #edf1f6;
+    --surface: #fbfcfe;
+    --surface-2: #f2f5f9;
+    --surface-3: #e8edf3;
+    --line: #dce3ec;
+    --line-strong: #c8d0d9;
+    --ink: #17202b;
+    --muted: #686f78;
+  }
+  :root[data-theme="mist"][data-appearance="dark"],
+  .dark[data-theme="mist"] {
+    --bg: #10141a;
+    --surface: #192029;
+    --surface-2: #1e262f;
+    --surface-3: #242d37;
+    --line: #28313c;
+    --line-strong: #353e49;
+    --ink: #e6ecf3;
+    --muted: #959aa1;
+  }
+  :root[data-theme="moss"] {
+    --bg: #eef2ec;
+    --surface: #fcfdfb;
+    --surface-2: #f3f6f1;
+    --surface-3: #e8eee6;
+    --line: #dbe3d8;
+    --line-strong: #c8d0c5;
+    --ink: #1b2219;
+    --muted: #6b7169;
+  }
+  :root[data-theme="moss"][data-appearance="dark"],
+  .dark[data-theme="moss"] {
+    --bg: #111510;
+    --surface: #1a2019;
+    --surface-2: #1f261e;
+    --surface-3: #262e24;
+    --line: #2a3228;
+    --line-strong: #373f35;
+    --ink: #e7eee4;
+    --muted: #969c93;
   }
 
   * {
@@ -86,9 +319,233 @@
   body {
     background-color: var(--bg-canvas);
     color: var(--text-primary);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: var(--font-sans);
+    font-size: var(--type-row-size);
     user-select: none;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Window & Workspace Chrome foundation from workspace-chrome.css */
+  .workspacePane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-surface);
+    background: var(--bg-surface-2);
+    box-shadow: var(--shadow);
+    container-type: inline-size;
+    container-name: workspace;
+  }
+
+  .workspaceToolPanel {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    gap: 8px;
+    min-width: 0;
+    min-height: var(--workspace-bar-height);
+    height: var(--workspace-bar-height);
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--bg-elevated);
+  }
+
+  .lmsReaderTitle {
+    flex: 1 1 120px;
+    min-width: 0;
+    padding: 4px 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--type-note-size);
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+  }
+
+  .lmsViewerClose {
+    display: grid;
+    place-items: center;
+    flex: 0 0 28px;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-chip);
+    background: none;
+    color: var(--text-muted);
+    cursor: default;
+    transition: background var(--motion-duration-fast) var(--motion-easing-standard),
+                color var(--motion-duration-fast) var(--motion-easing-standard);
+  }
+
+  .lmsViewerClose:hover {
+    background: var(--danger-soft);
+    color: var(--danger);
+  }
+
+  /* Interaction press effect from ui.css */
+  :where(
+    button:not(:disabled),
+    [role="button"]:not([aria-disabled="true"]),
+    [role="tab"]
+  ):active {
+    box-shadow: inset 0 0 0 100vmax var(--state-press);
+  }
+
+  /* react-grid-layout smooth dynamic styling */
+  .react-grid-layout {
+    position: relative;
+    transition: height 250ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .react-grid-item {
+    transition: transform 250ms cubic-bezier(0.2, 0, 0, 1),
+                width 250ms cubic-bezier(0.2, 0, 0, 1),
+                height 250ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .react-grid-item.cssTransforms {
+    transition: transform 250ms cubic-bezier(0.2, 0, 0, 1),
+                width 250ms cubic-bezier(0.2, 0, 0, 1),
+                height 250ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .react-grid-item.react-draggable-dragging {
+    transition: none !important;
+    z-index: 50 !important;
+    will-change: transform;
+    box-shadow: 0 20px 30px -6px rgba(0, 0, 0, 0.18), 0 8px 12px -4px rgba(0, 0, 0, 0.1);
+    opacity: 0.96;
+    cursor: grabbing !important;
+  }
+
+  .react-grid-item.resizing {
+    transition: none !important;
+    z-index: 50 !important;
+    will-change: width, height;
+    box-shadow: 0 14px 24px -4px rgba(0, 0, 0, 0.14), 0 4px 8px -2px rgba(0, 0, 0, 0.08);
+  }
+
+  .react-grid-item.react-grid-placeholder {
+    background: var(--accent) !important;
+    opacity: 0.14 !important;
+    border: 1.5px dashed var(--accent) !important;
+    border-radius: var(--radius-surface) !important;
+    transition: transform 200ms cubic-bezier(0.2, 0, 0, 1),
+                width 200ms cubic-bezier(0.2, 0, 0, 1),
+                height 200ms cubic-bezier(0.2, 0, 0, 1) !important;
+    z-index: 2;
+    user-select: none;
+  }
+
+  /* Multi-Directional Resize Handles: Smooth fade-in on card hover */
+  .react-grid-item > .react-resizable-handle {
+    opacity: 0;
+    transition: opacity 180ms ease, background-color 150ms ease;
+    z-index: 30;
+  }
+
+  .react-grid-item:hover > .react-resizable-handle,
+  .react-grid-item.resizing > .react-resizable-handle {
+    opacity: 1;
+  }
+
+  /* Corner SE Handle */
+  .react-grid-item > .react-resizable-handle.react-resizable-handle-se {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    bottom: 0;
+    right: 0;
+    cursor: se-resize;
+  }
+
+  .react-grid-item > .react-resizable-handle.react-resizable-handle-se::after {
+    content: "";
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    width: 7px;
+    height: 7px;
+    border-right: 2px solid var(--text-muted);
+    border-bottom: 2px solid var(--text-muted);
+    border-radius: 0 0 2px 0;
+    opacity: 0.4;
+    transition: opacity 150ms ease, border-color 150ms ease, transform 150ms ease;
+  }
+
+  .react-grid-item > .react-resizable-handle.react-resizable-handle-se:hover::after {
+    opacity: 1;
+    border-color: var(--accent);
+    transform: scale(1.15);
+  }
+
+  /* Right Edge E Handle */
+  .react-grid-item > .react-resizable-handle.react-resizable-handle-e {
+    position: absolute;
+    width: 10px;
+    height: 38px;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: ew-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .react-grid-item > .react-resizable-handle.react-resizable-handle-e::after {
+    content: "";
+    position: absolute;
+    right: 2px;
+    width: 3px;
+    height: 20px;
+    border-radius: 9999px;
+    background-color: var(--text-muted);
+    opacity: 0.35;
+    transition: opacity 150ms ease, background-color 150ms ease, width 150ms ease;
+  }
+
+  .react-grid-item > .react-resizable-handle.react-resizable-handle-e:hover::after {
+    opacity: 1;
+    width: 4px;
+    background-color: var(--accent);
+  }
+
+  /* Bottom Edge S Handle */
+  .react-grid-item > .react-resizable-handle.react-resizable-handle-s {
+    position: absolute;
+    height: 10px;
+    width: 38px;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    cursor: ns-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .react-grid-item > .react-resizable-handle.react-resizable-handle-s::after {
+    content: "";
+    position: absolute;
+    bottom: 2px;
+    height: 3px;
+    width: 20px;
+    border-radius: 9999px;
+    background-color: var(--text-muted);
+    opacity: 0.35;
+    transition: opacity 150ms ease, background-color 150ms ease, height 150ms ease;
+  }
+
+  .react-grid-item > .react-resizable-handle.react-resizable-handle-s:hover::after {
+    opacity: 1;
+    height: 4px;
+    background-color: var(--accent);
   }
 }

@@ -67,7 +67,7 @@ export const HabitsView: React.FC = () => {
   const streakDays = metrics?.active_streak_days ?? 7;
 
   return (
-    <div className="h-full w-full flex flex-col p-4 bg-surface rounded border border-subtle select-none overflow-hidden">
+    <div className="workspacePane h-full w-full flex flex-col p-4 bg-surface rounded-[var(--radius-surface)] border border-subtle shadow-panel select-none overflow-hidden">
       {/* Top Header */}
       <div className="flex-shrink-0 flex items-center justify-between pb-3 border-b border-subtle/50">
         <div className="flex items-center space-x-3">

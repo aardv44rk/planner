@@ -1,27 +1,21 @@
 import React, { useEffect } from 'react';
 import {
-  LayoutGrid,
+  CalendarDays,
+  BookOpen,
   CheckSquare,
   Clock,
   FileText,
   Sparkles,
-  Sliders,
   Sun,
   Moon,
   ChevronRight,
   ChevronLeft,
-  Check,
-  Eye,
-  EyeOff,
-  RotateCcw,
   Calendar,
   FolderKanban,
-  PieChart,
-  BarChart3,
-  Bookmark,
-  Pin,
+  Check,
+  GraduationCap,
 } from 'lucide-react';
-import { useLayoutStore, ALL_WIDGET_IDS, WIDGET_TITLES } from '../stores/layoutStore';
+import { useLayoutStore } from '../stores/layoutStore';
 import { useThemeStore } from '../stores/themeStore';
 import { useCommandCenterStore } from '../stores/commandCenterStore';
 import { AppTab } from '../types';
@@ -35,60 +29,49 @@ interface NavItem {
 
 const navTabs: NavItem[] = [
   {
-    id: 'home',
-    label: 'Home Dashboard',
-    shortDesc: 'Customizable Bento Grid',
-    icon: LayoutGrid,
+    id: 'today',
+    label: 'Today',
+    shortDesc: 'Daily agenda & active focus',
+    icon: CalendarDays,
+  },
+  {
+    id: 'courses',
+    label: 'Courses',
+    shortDesc: 'Science Tokyo LMS & Assignments',
+    icon: BookOpen,
   },
   {
     id: 'tasks',
-    label: 'Tasks & Projects',
+    label: 'Tasks',
     shortDesc: 'Task manager & project tracking',
     icon: CheckSquare,
   },
   {
     id: 'schedule',
-    label: 'Calendar & Schedule',
+    label: 'Schedule',
     shortDesc: 'Timeline & agenda',
     icon: Clock,
   },
   {
     id: 'notes',
-    label: 'Notes & Vault',
+    label: 'Notes',
     shortDesc: 'Daily scratchpads & Markdown',
     icon: FileText,
   },
   {
     id: 'habits',
-    label: 'Habits & Metrics',
+    label: 'Habits',
     shortDesc: 'Streak matrix & time analytics',
     icon: Sparkles,
   },
 ];
 
-const widgetIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-  kpi_strip: BarChart3,
-  schedule: Clock,
-  scratchpad: FileText,
-  tasks: CheckSquare,
-  projects: FolderKanban,
-  time_allocation: PieChart,
-  habit_matrix: Sparkles,
-  quick_notes: Bookmark,
-};
-
 export const Sidebar: React.FC = () => {
   const {
     activeTab,
     setActiveTab,
-    slots,
-    isEditMode,
-    toggleEditMode,
     isSidebarExpanded,
     toggleSidebar,
-    toggleWidgetPin,
-    resetLayout,
-    isWidgetPinned,
   } = useLayoutStore();
 
   const { theme, toggleTheme } = useThemeStore();
@@ -124,195 +107,210 @@ export const Sidebar: React.FC = () => {
   }, {});
 
   return (
-    <aside className="h-full flex flex-shrink-0 z-30 select-none border-r border-subtle transition-all duration-200">
-      {/* 44px Icon Rail */}
-      <div className="w-11 h-full bg-surface flex flex-col items-center justify-between py-2 border-r border-subtle/50">
-        {/* Top: Brand Logo & 5 Domain Navigation Tabs */}
-        <div className="flex flex-col items-center space-y-1.5 w-full">
-          {/* Logo Mark */}
-          <div
-            onClick={() => setActiveTab('home')}
-            className="w-7 h-7 rounded flex items-center justify-center text-accent font-bold text-xs tracking-tighter mb-1 bg-elevated border border-subtle/80 cursor-pointer hover:border-accent/50 transition-colors"
+    <aside className="h-full flex flex-shrink-0 z-30 select-none">
+      {/* 72px Reference Navigation Rail (.rail) */}
+      <div className="w-[72px] h-full flex flex-col items-center justify-between p-[14px_8px] border-r border-subtle bg-[color-mix(in_srgb,var(--surface)_70%,var(--bg))] flex-shrink-0 select-none">
+        {/* Top: Brand Logo & Navigation Tabs */}
+        <div className="flex flex-col items-center w-full gap-1">
+          {/* Brand Mark */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('today')}
+            className="w-10 h-10 rounded-[10px] flex items-center justify-center text-accent font-bold text-xs tracking-tight mb-2 bg-surface-2 border border-subtle hover:border-accent hover:bg-elevated transition-all cursor-pointer shadow-subtle select-none"
             title="LifeOS Command Center"
           >
             CC
-          </div>
+          </button>
 
-          <div className="w-6 h-[1px] bg-subtle/60 my-0.5" />
-
-          {/* 5 Primary Application Tabs */}
-          {navTabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`w-8 h-8 rounded flex items-center justify-center transition-all relative ${
-                  isActive
-                    ? 'bg-accent text-white shadow-xs'
-                    : 'text-tx-muted hover:text-tx-primary hover:bg-elevated'
-                }`}
-                title={`${tab.label} (${tab.shortDesc})`}
-              >
-                <Icon className="w-4 h-4" />
-                {isActive && (
-                  <span className="absolute -left-1 top-2.5 w-0.5 h-3 bg-accent rounded-r" />
-                )}
-              </button>
-            );
-          })}
+          {/* Primary Navigation Tabs */}
+          <nav className="grid gap-1 w-full" aria-label="Main Navigation">
+            {navTabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id || (activeTab === 'home' && tab.id === 'today');
+              return (
+                <button
+                  type="button"
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`w-full border-0 rounded-[9px] grid justify-items-center gap-1 py-2 px-0 transition-colors select-none ${
+                    isActive
+                      ? 'bg-accent-soft text-accent'
+                      : 'text-muted hover:bg-elevated hover:text-tx-primary'
+                  }`}
+                  title={`${tab.label} (${tab.shortDesc})`}
+                >
+                  <Icon className="w-5 h-5 stroke-[1.75]" />
+                  <span className="text-[11px] font-semibold leading-none text-center">
+                    {tab.label}
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
         </div>
 
-        {/* Bottom: Customization, Theme Switcher, Expand Drawer Toggle */}
-        <div className="flex flex-col items-center space-y-1.5 w-full">
-          {/* Customization Toggle */}
-          <button
-            onClick={toggleEditMode}
-            className={`w-8 h-8 rounded flex items-center justify-center transition-colors ${
-              isEditMode
-                ? 'bg-accent text-white'
-                : 'text-tx-muted hover:text-tx-primary hover:bg-elevated'
-            }`}
-            title={isEditMode ? 'Exit Customization Mode' : 'Customize Home Layout (Drag & Resize)'}
-          >
-            <Sliders className="w-4 h-4" />
-          </button>
-
+        {/* Bottom Utility Items (.railUtility) */}
+        <div className="flex flex-col items-center w-full gap-1 mt-auto pt-2 border-t border-subtle/50">
           {/* Theme Switcher */}
           <button
+            type="button"
             onClick={toggleTheme}
-            className="w-8 h-8 rounded flex items-center justify-center text-tx-muted hover:text-tx-primary hover:bg-elevated transition-colors"
-            title={`Switch to ${theme === 'light' ? 'Obsidian Dark' : 'Warm Beige'} mode`}
+            className="w-full border-0 rounded-[9px] grid justify-items-center gap-1 py-2 px-0 text-muted hover:bg-elevated hover:text-tx-primary transition-colors select-none"
+            title={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} mode`}
           >
             {theme === 'light' ? (
-              <Moon className="w-4 h-4" />
+              <Moon className="w-5 h-5 stroke-[1.75]" />
             ) : (
-              <Sun className="w-4 h-4 text-amber-400" />
+              <Sun className="w-5 h-5 stroke-[1.75] text-amber-500" />
             )}
+            <span className="text-[11px] font-semibold leading-none">
+              {theme === 'light' ? 'Dark' : 'Light'}
+            </span>
           </button>
 
-          {/* Expand / Collapse Drawer Toggle */}
+          {/* Sub-navigation Drawer Toggle */}
           <button
+            type="button"
             onClick={toggleSidebar}
-            className="w-8 h-8 rounded flex items-center justify-center text-tx-muted hover:text-tx-primary hover:bg-elevated transition-colors"
+            className={`w-full border-0 rounded-[9px] grid justify-items-center gap-1 py-2 px-0 transition-colors select-none ${
+              isSidebarExpanded
+                ? 'bg-surface-3 text-tx-primary'
+                : 'text-muted hover:bg-elevated hover:text-tx-primary'
+            }`}
             title={isSidebarExpanded ? 'Collapse Sub-navigation (Ctrl+\\)' : 'Expand Sub-navigation (Ctrl+\\)'}
           >
             {isSidebarExpanded ? (
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-5 h-5 stroke-[1.75]" />
             ) : (
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-5 h-5 stroke-[1.75]" />
             )}
+            <span className="text-[11px] font-semibold leading-none">
+              {isSidebarExpanded ? 'Collapse' : 'Expand'}
+            </span>
           </button>
         </div>
       </div>
 
-      {/* 230px Contextual Collapsible Panel */}
-      {isSidebarExpanded && (
-        <div className="w-56 h-full bg-surface border-r border-subtle flex flex-col min-h-0 overflow-hidden animate-slide-right">
+      {/* Collapsible Sub-navigation Drawer */}
+      <div
+        className={`h-full bg-surface-2 flex flex-col min-h-0 overflow-hidden transition-[width,opacity] duration-200 ease-[cubic-bezier(0.2,0,0,1)] ${
+          isSidebarExpanded
+            ? 'w-[230px] opacity-100 border-r border-subtle pointer-events-auto'
+            : 'w-0 opacity-0 border-r-0 pointer-events-none'
+        }`}
+      >
+        <div className="w-[230px] h-full flex flex-col min-h-0">
           {/* Header showing Active Domain Tab title */}
-          <div className="flex-shrink-0 p-2.5 border-b border-subtle flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-tx-primary truncate pr-1">
-              {navTabs.find((t) => t.id === activeTab)?.label}
+          <div className="flex-shrink-0 h-[42px] px-3 bg-surface-3 border-b border-subtle flex items-center justify-between">
+            <span className="text-[12px] font-semibold text-tx-primary truncate pr-1">
+              {navTabs.find((t) => t.id === activeTab)?.label ?? 'Workspace'}
             </span>
-            <span className="text-[10px] text-tx-muted font-mono flex-shrink-0">
+            <span className="text-[10px] text-muted font-mono px-1.5 py-0.5 rounded-[6px] bg-surface border border-subtle flex-shrink-0">
               Ctrl+\
             </span>
           </div>
 
           {/* Contextual Sub-navigation Content */}
-          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-2.5 space-y-3">
-            {/* SUB-NAV 1: HOME (Pinned Widgets list + quick pin toggles) */}
-            {activeTab === 'home' && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase tracking-wider font-semibold text-tx-muted">
-                    Pinned to Home
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-3 space-y-3">
+            {/* SUB-NAV 1: TODAY (Daily Focus & Portal Info) */}
+            {(activeTab === 'today' || activeTab === 'home') && (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <span className="text-[11px] uppercase tracking-wider font-semibold text-muted block">
+                    Today's Focus
                   </span>
-                  <span className="text-[10px] font-mono text-accent">
-                    {slots.filter((s) => s.widgetId !== null).length}/
-                    {ALL_WIDGET_IDS.length}
-                  </span>
+
+                  <div className="p-2.5 rounded-[10px] bg-surface border border-subtle space-y-1.5 text-xs shadow-subtle">
+                    <div className="text-[10px] text-muted">Selected Date:</div>
+                    <div className="font-mono text-tx-primary text-xs font-semibold">
+                      {selectedDate}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDate(todayStr)}
+                      className="mt-1 text-[11px] text-accent hover:underline flex items-center space-x-1"
+                    >
+                      <Calendar className="w-3 h-3 stroke-[1.75]" />
+                      <span>Jump to Today</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-1">
-                  {ALL_WIDGET_IDS.map((widgetId) => {
-                    const Icon = widgetIconMap[widgetId] || LayoutGrid;
-                    const isPinned = isWidgetPinned(widgetId);
-                    const title = WIDGET_TITLES[widgetId] || widgetId;
-
-                    return (
-                      <div
-                        key={widgetId}
-                        onClick={() => toggleWidgetPin(widgetId)}
-                        className={`flex items-center justify-between p-1.5 rounded transition-colors cursor-pointer border ${
-                          isPinned
-                            ? 'bg-elevated/70 border-subtle/50 text-tx-primary'
-                            : 'bg-transparent border-transparent text-tx-muted hover:bg-elevated/40'
-                        }`}
-                      >
-                        <div className="flex items-center space-x-2 min-w-0 pr-1">
-                          <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${isPinned ? 'text-accent' : 'text-tx-muted'}`} />
-                          <span className={`text-[11px] truncate ${isPinned ? 'font-medium' : 'line-through text-tx-muted/60'}`}>
-                            {title}
-                          </span>
-                        </div>
-
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleWidgetPin(widgetId);
-                          }}
-                          className={`p-1 rounded transition-colors ${
-                            isPinned
-                              ? 'text-accent hover:bg-accent/10'
-                              : 'text-tx-muted hover:text-tx-primary hover:bg-canvas'
-                          }`}
-                          title={isPinned ? 'Unpin from Home' : 'Pin to Home'}
-                        >
-                          {isPinned ? (
-                            <Eye className="w-3 h-3 text-accent" />
-                          ) : (
-                            <EyeOff className="w-3 h-3 text-tx-muted" />
-                          )}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="pt-2 border-t border-subtle/50 space-y-1">
-                  <button
-                    onClick={toggleEditMode}
-                    className={`w-full flex items-center space-x-2 px-2 py-1.5 text-xs rounded transition-colors ${
-                      isEditMode
-                        ? 'bg-accent text-white font-medium'
-                        : 'text-tx-muted hover:text-tx-primary hover:bg-elevated'
-                    }`}
-                  >
-                    <Sliders className="w-3.5 h-3.5" />
-                    <span>{isEditMode ? 'Finish Customizing' : 'Customize Layout'}</span>
-                  </button>
-
-                  <button
-                    onClick={() => resetLayout()}
-                    className="w-full flex items-center space-x-2 px-2 py-1.5 text-xs text-tx-muted hover:text-tx-primary rounded hover:bg-elevated transition-colors"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Reset Home Layout</span>
-                  </button>
+                  <div className="flex items-center justify-between p-2 rounded-[10px] bg-surface border border-subtle text-xs">
+                    <span className="text-muted text-[11px]">Daily Schedule</span>
+                    <span className="font-mono font-semibold text-accent text-[11px]">
+                      {scheduleBlocks.length} Blocks
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-[10px] bg-surface border border-subtle text-xs">
+                    <span className="text-muted text-[11px]">Tasks Due</span>
+                    <span className="font-mono font-semibold text-tx-primary text-[11px]">
+                      {tasks.filter((t) => t.completed === 0).length} Open
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-[10px] bg-surface border border-subtle text-xs">
+                    <span className="text-muted text-[11px]">Active Streak</span>
+                    <span className="font-mono font-semibold text-ok text-[11px]">
+                      {metrics?.active_streak_days ?? 7} Days
+                    </span>
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* SUB-NAV 2: TASKS (Project Filters & Stats) */}
+            {/* SUB-NAV 2: COURSES & LMS */}
+            {activeTab === 'courses' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] uppercase tracking-wider font-semibold text-muted">
+                    Enrolled Classes
+                  </span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-[6px] bg-surface-3 text-accent font-semibold">
+                    4 Active
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  {[
+                    { code: 'CS.301', name: 'Operating Systems', count: '2 Tasks' },
+                    { code: 'AI.420', name: 'Machine Learning', count: '1 Task' },
+                    { code: 'PH.210', name: 'Quantum Mechanics', count: '1 Task' },
+                    { code: 'MA.315', name: 'Stochastic Processes', count: '1 Task' },
+                  ].map((c) => (
+                    <div
+                      key={c.code}
+                      className="p-2 rounded-[10px] bg-surface border border-subtle text-xs flex items-center justify-between"
+                    >
+                      <div>
+                        <div className="font-mono font-bold text-accent text-[11px]">{c.code}</div>
+                        <div className="text-[11px] text-tx-primary truncate max-w-[120px]">{c.name}</div>
+                      </div>
+                      <span className="text-[10px] text-muted font-mono">{c.count}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="pt-2 border-t border-subtle">
+                  <div className="p-2 rounded-[10px] bg-surface-3 text-muted text-[11px] space-y-1">
+                    <div className="font-semibold text-tx-primary flex items-center space-x-1">
+                      <GraduationCap className="w-3.5 h-3.5 text-accent" />
+                      <span>Science Tokyo Moodle</span>
+                    </div>
+                    <div>Quarter: 2026 Fall (3Q/4Q)</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* SUB-NAV 3: TASKS (Project Filters & Stats) */}
             {activeTab === 'tasks' && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase tracking-wider font-semibold text-tx-muted">
+                  <span className="text-[11px] uppercase tracking-wider font-semibold text-muted">
                     Project Breakdown
                   </span>
-                  <span className="text-[10px] font-mono text-tx-muted">
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-[6px] bg-surface-3 text-muted">
                     {tasks.length} Total
                   </span>
                 </div>
@@ -321,109 +319,65 @@ export const Sidebar: React.FC = () => {
                   {Object.entries(projectCounts).map(([projName, count]) => (
                     <div
                       key={projName}
-                      className="flex items-center justify-between p-1.5 rounded hover:bg-elevated/60 text-xs transition-colors"
+                      className="flex items-center justify-between p-2 rounded-[10px] hover:bg-elevated text-xs transition-colors"
                     >
                       <div className="flex items-center space-x-2 min-w-0">
-                        <FolderKanban className="w-3 h-3 text-accent flex-shrink-0" />
-                        <span className="truncate text-tx-primary text-[11px]">{projName}</span>
+                        <FolderKanban className="w-3.5 h-3.5 text-accent flex-shrink-0 stroke-[1.75]" />
+                        <span className="truncate text-tx-primary text-[12px]">{projName}</span>
                       </div>
-                      <span className="text-[10px] font-mono text-tx-muted px-1.5 py-0.2 rounded bg-elevated">
+                      <span className="text-[10px] font-mono text-muted px-1.5 py-0.5 rounded-[6px] bg-surface-3">
                         {count}
                       </span>
                     </div>
                   ))}
                 </div>
-
-                <div className="pt-2 border-t border-subtle/50 space-y-1">
-                  <span className="text-[10px] uppercase tracking-wider font-semibold text-tx-muted block mb-1">
-                    Home Screen Pins
-                  </span>
-                  <button
-                    onClick={() => toggleWidgetPin('widget-tasks')}
-                    className="w-full flex items-center justify-between px-2 py-1.5 text-xs rounded bg-elevated/40 hover:bg-elevated border border-subtle/40 text-tx-primary"
-                  >
-                    <span className="text-[11px]">Tasks Widget</span>
-                    {isWidgetPinned('widget-tasks') ? (
-                      <Check className="w-3 h-3 text-accent" />
-                    ) : (
-                      <Pin className="w-3 h-3 text-tx-muted" />
-                    )}
-                  </button>
-                  <button
-                    onClick={() => toggleWidgetPin('widget-projects')}
-                    className="w-full flex items-center justify-between px-2 py-1.5 text-xs rounded bg-elevated/40 hover:bg-elevated border border-subtle/40 text-tx-primary"
-                  >
-                    <span className="text-[11px]">Projects Widget</span>
-                    {isWidgetPinned('widget-projects') ? (
-                      <Check className="w-3 h-3 text-accent" />
-                    ) : (
-                      <Pin className="w-3 h-3 text-tx-muted" />
-                    )}
-                  </button>
-                </div>
               </div>
             )}
 
-            {/* SUB-NAV 3: SCHEDULE (Date quick selection & today summary) */}
+            {/* SUB-NAV 4: SCHEDULE */}
             {activeTab === 'schedule' && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase tracking-wider font-semibold text-tx-muted">
+                  <span className="text-[11px] uppercase tracking-wider font-semibold text-muted">
                     Schedule Info
                   </span>
-                  <span className="text-[10px] font-mono text-tx-muted">
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-[6px] bg-surface-3 text-muted">
                     {scheduleBlocks.length} Events
                   </span>
                 </div>
 
-                <div className="p-2 rounded bg-elevated/40 border border-subtle/50 space-y-1 text-xs">
-                  <div className="text-[10px] text-tx-muted">Selected Date:</div>
+                <div className="p-2.5 rounded-[10px] bg-surface border border-subtle space-y-1.5 text-xs">
+                  <div className="text-[10px] text-muted">Selected Date:</div>
                   <div className="font-mono text-tx-primary text-xs font-semibold">
                     {selectedDate}
                   </div>
                   <button
+                    type="button"
                     onClick={() => setSelectedDate(todayStr)}
-                    className="mt-1 text-[10px] text-accent hover:underline flex items-center space-x-1"
+                    className="mt-1 text-[11px] text-accent hover:underline flex items-center space-x-1"
                   >
-                    <Calendar className="w-2.5 h-2.5" />
+                    <Calendar className="w-3 h-3 stroke-[1.75]" />
                     <span>Jump to Today</span>
-                  </button>
-                </div>
-
-                <div className="pt-2 border-t border-subtle/50">
-                  <span className="text-[10px] uppercase tracking-wider font-semibold text-tx-muted block mb-1">
-                    Home Screen Pin
-                  </span>
-                  <button
-                    onClick={() => toggleWidgetPin('widget-schedule')}
-                    className="w-full flex items-center justify-between px-2 py-1.5 text-xs rounded bg-elevated/40 hover:bg-elevated border border-subtle/40 text-tx-primary"
-                  >
-                    <span className="text-[11px]">Schedule Widget</span>
-                    {isWidgetPinned('widget-schedule') ? (
-                      <Check className="w-3 h-3 text-accent" />
-                    ) : (
-                      <Pin className="w-3 h-3 text-tx-muted" />
-                    )}
                   </button>
                 </div>
               </div>
             )}
 
-            {/* SUB-NAV 4: NOTES (Daily Notes History Tree) */}
+            {/* SUB-NAV 5: NOTES (Daily Notes History Tree) */}
             {activeTab === 'notes' && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase tracking-wider font-semibold text-tx-muted">
+                  <span className="text-[11px] uppercase tracking-wider font-semibold text-muted">
                     Daily Notes
                   </span>
-                  <span className="text-[10px] font-mono text-tx-muted">
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-[6px] bg-surface-3 text-muted">
                     {notesHistory.length} Recorded
                   </span>
                 </div>
 
                 <div className="space-y-1">
                   {notesHistory.length === 0 ? (
-                    <div className="text-xs text-tx-muted py-2 text-center">
+                    <div className="text-xs text-muted py-2 text-center">
                       No archived notes yet.
                     </div>
                   ) : (
@@ -431,60 +385,33 @@ export const Sidebar: React.FC = () => {
                       const isSelected = dStr === selectedDate;
                       return (
                         <button
+                          type="button"
                           key={dStr}
                           onClick={() => setSelectedDate(dStr)}
-                          className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors flex items-center justify-between ${
+                          className={`w-full text-left px-2.5 py-1.5 rounded-[10px] text-xs transition-colors flex items-center justify-between ${
                             isSelected
-                              ? 'bg-accent text-white font-medium shadow-xs'
+                              ? 'bg-accent-soft text-accent font-semibold border border-accent/20'
                               : 'text-tx-primary hover:bg-elevated'
                           }`}
                         >
                           <span className="font-mono text-[11px]">{dStr}</span>
-                          {isSelected && <Check className="w-3 h-3" />}
+                          {isSelected && <Check className="w-3.5 h-3.5 stroke-[2]" />}
                         </button>
                       );
                     })
                   )}
                 </div>
-
-                <div className="pt-2 border-t border-subtle/50 space-y-1">
-                  <span className="text-[10px] uppercase tracking-wider font-semibold text-tx-muted block mb-1">
-                    Home Screen Pins
-                  </span>
-                  <button
-                    onClick={() => toggleWidgetPin('widget-scratchpad')}
-                    className="w-full flex items-center justify-between px-2 py-1.5 text-xs rounded bg-elevated/40 hover:bg-elevated border border-subtle/40 text-tx-primary"
-                  >
-                    <span className="text-[11px]">Daily Scratchpad</span>
-                    {isWidgetPinned('widget-scratchpad') ? (
-                      <Check className="w-3 h-3 text-accent" />
-                    ) : (
-                      <Pin className="w-3 h-3 text-tx-muted" />
-                    )}
-                  </button>
-                  <button
-                    onClick={() => toggleWidgetPin('widget-quick-notes')}
-                    className="w-full flex items-center justify-between px-2 py-1.5 text-xs rounded bg-elevated/40 hover:bg-elevated border border-subtle/40 text-tx-primary"
-                  >
-                    <span className="text-[11px]">Quick Notes</span>
-                    {isWidgetPinned('widget-quick-notes') ? (
-                      <Check className="w-3 h-3 text-accent" />
-                    ) : (
-                      <Pin className="w-3 h-3 text-tx-muted" />
-                    )}
-                  </button>
-                </div>
               </div>
             )}
 
-            {/* SUB-NAV 5: HABITS (Habits Overview & Streaks) */}
+            {/* SUB-NAV 6: HABITS */}
             {activeTab === 'habits' && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase tracking-wider font-semibold text-tx-muted">
+                  <span className="text-[11px] uppercase tracking-wider font-semibold text-muted">
                     Habits & Streaks
                   </span>
-                  <span className="text-[10px] font-mono text-accent">
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-[6px] bg-accent-soft text-accent font-semibold">
                     {metrics?.active_streak_days ?? 7}d streak
                   </span>
                 </div>
@@ -495,62 +422,23 @@ export const Sidebar: React.FC = () => {
                     return (
                       <div
                         key={habit.id}
-                        className="flex items-center justify-between p-1.5 rounded hover:bg-elevated/60 text-xs transition-colors"
+                        className="flex items-center justify-between p-2 rounded-[10px] hover:bg-elevated text-xs transition-colors"
                       >
-                        <span className="truncate text-[11px] text-tx-primary flex-1 pr-1">
+                        <span className="truncate text-[12px] text-tx-primary flex-1 pr-1 font-medium">
                           {habit.habit_name}
                         </span>
-                        <span className="text-[9px] font-mono text-tx-muted px-1.5 py-0.2 rounded bg-elevated">
+                        <span className="text-[10px] font-mono text-muted px-1.5 py-0.5 rounded-[6px] bg-surface-3">
                           {completedCount}/7
                         </span>
                       </div>
                     );
                   })}
                 </div>
-
-                <div className="pt-2 border-t border-subtle/50 space-y-1">
-                  <span className="text-[10px] uppercase tracking-wider font-semibold text-tx-muted block mb-1">
-                    Home Screen Pins
-                  </span>
-                  <button
-                    onClick={() => toggleWidgetPin('widget-habit-matrix')}
-                    className="w-full flex items-center justify-between px-2 py-1.5 text-xs rounded bg-elevated/40 hover:bg-elevated border border-subtle/40 text-tx-primary"
-                  >
-                    <span className="text-[11px]">Habit Matrix</span>
-                    {isWidgetPinned('widget-habit-matrix') ? (
-                      <Check className="w-3 h-3 text-accent" />
-                    ) : (
-                      <Pin className="w-3 h-3 text-tx-muted" />
-                    )}
-                  </button>
-                  <button
-                    onClick={() => toggleWidgetPin('widget-time-allocation')}
-                    className="w-full flex items-center justify-between px-2 py-1.5 text-xs rounded bg-elevated/40 hover:bg-elevated border border-subtle/40 text-tx-primary"
-                  >
-                    <span className="text-[11px]">Time Allocation</span>
-                    {isWidgetPinned('widget-time-allocation') ? (
-                      <Check className="w-3 h-3 text-accent" />
-                    ) : (
-                      <Pin className="w-3 h-3 text-tx-muted" />
-                    )}
-                  </button>
-                  <button
-                    onClick={() => toggleWidgetPin('widget-kpis')}
-                    className="w-full flex items-center justify-between px-2 py-1.5 text-xs rounded bg-elevated/40 hover:bg-elevated border border-subtle/40 text-tx-primary"
-                  >
-                    <span className="text-[11px]">Key Performance Strip</span>
-                    {isWidgetPinned('widget-kpis') ? (
-                      <Check className="w-3 h-3 text-accent" />
-                    ) : (
-                      <Pin className="w-3 h-3 text-tx-muted" />
-                    )}
-                  </button>
-                </div>
               </div>
             )}
           </div>
         </div>
-      )}
+      </div>
     </aside>
   );
 };

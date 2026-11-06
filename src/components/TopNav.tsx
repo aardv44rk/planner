@@ -21,11 +21,13 @@ import { useCommandCenterStore } from '../stores/commandCenterStore';
 import { AppTab } from '../types';
 
 const tabTitles: Record<AppTab, string> = {
-  home: 'Home Dashboard',
+  today: 'Today Workspace',
+  courses: 'Courses & LMS',
   tasks: 'Tasks & Projects',
   schedule: 'Calendar & Schedule',
   notes: 'Notes & Vault',
   habits: 'Habits & Metrics',
+  home: 'Home Dashboard',
 };
 
 const widgetIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -85,19 +87,19 @@ export const TopNav: React.FC = () => {
 
 
   return (
-    <header className="flex-shrink-0 w-full h-11 bg-transparent px-3.5 flex items-center justify-between select-none border-b border-subtle/30">
+    <header className="flex-shrink-0 w-full h-[42px] bg-transparent px-3.5 flex items-center justify-between select-none border-b border-subtle">
       {/* Left: Domain Breadcrumb & Date */}
       <div className="flex items-center space-x-2 text-xs">
         <span className="font-semibold text-tx-primary tracking-tight">
           LifeOS
         </span>
-        <span className="text-subtle text-xs">/</span>
+        <span className="text-muted text-xs">/</span>
         <span className="text-tx-primary font-medium text-xs">
           {tabTitles[activeTab]}
         </span>
-        <span className="text-subtle text-xs">·</span>
-        <div className="flex items-center space-x-1 text-tx-muted text-[11px]">
-          <Calendar className="w-3 h-3 text-tx-muted" />
+        <span className="text-muted text-xs">·</span>
+        <div className="flex items-center space-x-1.5 text-muted text-[11px]">
+          <Calendar className="w-3.5 h-3.5 stroke-[1.75]" />
           <span>{formattedDate}</span>
         </div>
       </div>
@@ -105,17 +107,18 @@ export const TopNav: React.FC = () => {
       {/* Center: Slim Search / Command trigger */}
       <div className="flex-1 max-w-sm mx-4">
         <button
+          type="button"
           onClick={() => setCommandPaletteOpen(true)}
-          className="w-full flex items-center justify-between px-2.5 py-1 text-xs rounded border border-subtle/80 bg-surface/60 hover:bg-surface hover:border-tx-muted/40 transition-colors text-tx-muted group shadow-xs"
+          className="w-full flex items-center justify-between px-3 py-1 text-xs rounded-[var(--radius-control)] border border-subtle bg-surface hover:border-[var(--line-strong)] transition-colors text-muted group shadow-subtle"
           title="Open Command Palette (Ctrl+K)"
         >
           <div className="flex items-center space-x-2">
-            <Search className="w-3 h-3 text-tx-muted group-hover:text-tx-primary transition-colors" />
-            <span className="text-[11px]">
+            <Search className="w-3.5 h-3.5 stroke-[1.75] text-muted group-hover:text-tx-primary transition-colors" />
+            <span className="text-[12px]">
               Search or type a command...
             </span>
           </div>
-          <kbd className="px-1 py-0.2 text-[9px] font-mono rounded bg-elevated border border-subtle text-tx-muted">
+          <kbd className="px-1.5 py-0.5 text-[9px] font-mono font-semibold rounded-[var(--radius-chip)] bg-surface-3 border border-subtle text-muted">
             Ctrl+K
           </kbd>
         </button>
@@ -128,30 +131,32 @@ export const TopNav: React.FC = () => {
             {/* + Add Widget Dropdown Button */}
             <div className="relative" ref={addMenuRef}>
               <button
+                type="button"
                 onClick={() => setIsAddMenuOpen(!isAddMenuOpen)}
-                className={`flex items-center space-x-1.5 px-2.5 py-1 text-xs rounded border transition-colors shadow-xs ${
+                className={`flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold rounded-[var(--radius-control)] border transition-colors shadow-subtle ${
                   isAddMenuOpen
-                    ? 'bg-elevated border-accent text-accent font-medium'
+                    ? 'bg-accent-soft border-accent text-accent'
                     : 'bg-surface border-subtle text-tx-primary hover:bg-elevated'
                 }`}
                 title="Add unpinned widgets to Home screen"
               >
-                <Plus className="w-3 h-3" />
+                <Plus className="w-3.5 h-3.5 stroke-[2]" />
                 <span>+ Add Widget</span>
               </button>
 
               {/* Popover Dropdown */}
               {isAddMenuOpen && (
-                <div className="absolute right-0 top-full mt-1.5 w-64 rounded-lg bg-surface border border-subtle shadow-2xl p-2 z-50 animate-scale-in">
-                  <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-subtle/50 px-1">
+                <div className="absolute right-0 top-full mt-1.5 w-64 rounded-[var(--radius-surface)] bg-surface border border-subtle shadow-panel p-2 z-50 animate-scale-in">
+                  <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-subtle px-1">
                     <span className="text-[11px] font-semibold text-tx-primary uppercase tracking-wider">
                       Add to Home Screen
                     </span>
                     <button
+                      type="button"
                       onClick={() => setIsAddMenuOpen(false)}
-                      className="text-tx-muted hover:text-tx-primary p-0.5 rounded"
+                      className="text-muted hover:text-tx-primary p-0.5 rounded-[var(--radius-chip)]"
                     >
-                      <X className="w-3 h-3" />
+                      <X className="w-3.5 h-3.5 stroke-[1.75]" />
                     </button>
                   </div>
 
@@ -165,34 +170,35 @@ export const TopNav: React.FC = () => {
                         <div
                           key={widgetId}
                           onClick={() => toggleWidgetPin(widgetId)}
-                          className="flex items-center justify-between p-1.5 rounded hover:bg-elevated cursor-pointer transition-colors"
+                          className="flex items-center justify-between p-2 rounded-[var(--radius-control)] hover:bg-elevated cursor-pointer transition-colors"
                         >
                           <div className="flex items-center space-x-2 min-w-0 pr-2">
-                            <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${isPinned ? 'text-accent' : 'text-tx-muted'}`} />
-                            <span className="text-xs text-tx-primary truncate">
+                            <Icon className={`w-4 h-4 flex-shrink-0 stroke-[1.75] ${isPinned ? 'text-accent' : 'text-muted'}`} />
+                            <span className="text-xs text-tx-primary truncate font-medium">
                               {title}
                             </span>
                           </div>
 
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               toggleWidgetPin(widgetId);
                             }}
-                            className={`flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                            className={`flex items-center space-x-1 px-2 py-0.5 rounded-[var(--radius-chip)] text-[10px] font-semibold transition-colors ${
                               isPinned
-                                ? 'bg-accent/15 text-accent border border-accent/30'
-                                : 'bg-canvas text-tx-muted border border-subtle hover:text-tx-primary'
+                                ? 'bg-accent-soft text-accent border border-accent/20'
+                                : 'bg-surface-3 text-muted border border-subtle hover:text-tx-primary'
                             }`}
                           >
                             {isPinned ? (
                               <>
-                                <Check className="w-2.5 h-2.5" />
+                                <Check className="w-3 h-3 stroke-[2]" />
                                 <span>Pinned</span>
                               </>
                             ) : (
                               <>
-                                <Plus className="w-2.5 h-2.5" />
+                                <Plus className="w-3 h-3 stroke-[2]" />
                                 <span>Add</span>
                               </>
                             )}
@@ -207,15 +213,16 @@ export const TopNav: React.FC = () => {
 
             {/* Customize Layout Toggle */}
             <button
+              type="button"
               onClick={toggleEditMode}
-              className={`flex items-center space-x-1.5 px-2.5 py-1 text-xs rounded transition-colors shadow-xs ${
+              className={`flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold rounded-[var(--radius-control)] transition-colors shadow-subtle ${
                 isEditMode
-                  ? 'bg-accent text-white font-medium shadow-sm'
-                  : 'bg-surface border border-subtle text-tx-muted hover:text-tx-primary hover:bg-elevated'
+                  ? 'bg-accent text-white'
+                  : 'bg-surface border border-subtle text-muted hover:text-tx-primary hover:bg-elevated'
               }`}
               title={isEditMode ? 'Finish customizing home layout' : 'Customize layout coordinates'}
             >
-              <Sliders className="w-3 h-3" />
+              <Sliders className="w-3.5 h-3.5 stroke-[1.75]" />
               <span>{isEditMode ? 'Done Customizing' : 'Customize Layout'}</span>
             </button>
           </>

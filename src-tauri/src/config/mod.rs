@@ -1,7 +1,8 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use directories::ProjectDirs;
-use crate::models::{GridSlot, LayoutConfig};
+use crate::models::LayoutConfig;
 
 pub fn get_app_config_dir() -> Result<PathBuf, std::io::Error> {
     let proj_dirs = ProjectDirs::from("com", "lifeos", "LifeOS")
@@ -14,20 +15,19 @@ pub fn get_app_config_dir() -> Result<PathBuf, std::io::Error> {
 }
 
 pub fn default_layout() -> LayoutConfig {
+    let mut pane_sizes = HashMap::new();
+    pane_sizes.insert("today-first".to_string(), 38.0);
+    pane_sizes.insert("today-second".to_string(), 62.0);
+    pane_sizes.insert("courses-first".to_string(), 32.0);
+    pane_sizes.insert("courses-second".to_string(), 68.0);
+
     LayoutConfig {
-        version: 6,
-        active_workspace: "home".to_string(),
-        widgets: vec![],
-        slots: Some(vec![
-            GridSlot { id: "slot-1".to_string(), col_span: 12, row_span: 1, widget_id: Some("kpi_strip".to_string()) },
-            GridSlot { id: "slot-2".to_string(), col_span: 8, row_span: 2, widget_id: Some("schedule".to_string()) },
-            GridSlot { id: "slot-3".to_string(), col_span: 4, row_span: 2, widget_id: Some("tasks".to_string()) },
-            GridSlot { id: "slot-4".to_string(), col_span: 4, row_span: 2, widget_id: Some("scratchpad".to_string()) },
-            GridSlot { id: "slot-5".to_string(), col_span: 4, row_span: 2, widget_id: Some("projects".to_string()) },
-            GridSlot { id: "slot-6".to_string(), col_span: 4, row_span: 2, widget_id: Some("time_allocation".to_string()) },
-            GridSlot { id: "slot-7".to_string(), col_span: 6, row_span: 2, widget_id: Some("habit_matrix".to_string()) },
-            GridSlot { id: "slot-8".to_string(), col_span: 6, row_span: 2, widget_id: Some("quick_notes".to_string()) },
-        ]),
+        version: 8,
+        active_workspace: "today".to_string(),
+        sidebar_collapsed: false,
+        pane_sizes,
+        widgets: None,
+        slots: None,
         workspaces: None,
     }
 }
@@ -44,8 +44,8 @@ pub fn load_or_init_layout(config_dir: &Path) -> Result<LayoutConfig, Box<dyn st
     let contents = fs::read_to_string(&layout_file)?;
     match serde_json::from_str::<LayoutConfig>(&contents) {
         Ok(layout) => {
-            // Migrate older layout versions (< 6) to Slot-Swapping dashboard layout
-            if layout.version < 6 || layout.slots.is_none() {
+            // Migrate older layout versions (< 8) to resizable split-pane workspaces
+            if layout.version < 8 {
                 let def = default_layout();
                 let serialized = serde_json::to_string_pretty(&def)?;
                 let _ = fs::write(&layout_file, serialized);

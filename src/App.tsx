@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { TopNav } from './components/TopNav';
-import { BentoGrid } from './components/BentoGrid';
+import { TodayWorkspace } from './components/workspaces/TodayWorkspace';
+import { CoursesWorkspace } from './components/workspaces/CoursesWorkspace';
 import { TasksView } from './components/views/TasksView';
 import { ScheduleView } from './components/views/ScheduleView';
 import { NotesView } from './components/views/NotesView';
@@ -33,14 +34,19 @@ export const App: React.FC = () => {
 
   return (
     <div className="h-screen w-screen flex bg-canvas text-tx-primary selection:bg-accent/20 transition-colors duration-150 overflow-hidden font-sans">
-      {/* Obsidian-Style Navigation Rail + Collapsible Sub-nav Drawer */}
+      {/* 72px Reference Navigation Rail + Collapsible Sub-nav Drawer */}
       <Sidebar />
 
       {/* Main Domain Application Area */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
         <TopNav />
-        <main className="flex-1 w-full min-h-0 overflow-y-auto custom-scrollbar px-3.5 pb-4 pt-2">
-          {activeTab === 'home' && <BentoGrid />}
+        <main className={`flex-1 w-full min-h-0 ${
+          activeTab === 'today' || activeTab === 'courses' || activeTab === 'home'
+            ? 'overflow-hidden flex flex-col'
+            : 'overflow-y-auto custom-scrollbar px-3.5 pb-4 pt-2'
+        }`}>
+          {(activeTab === 'today' || activeTab === 'home') && <TodayWorkspace />}
+          {activeTab === 'courses' && <CoursesWorkspace />}
           {activeTab === 'tasks' && <TasksView />}
           {activeTab === 'schedule' && <ScheduleView />}
           {activeTab === 'notes' && <NotesView />}

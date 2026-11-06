@@ -3,6 +3,8 @@ import {
   Search,
   PlusCircle,
   Calendar,
+  CalendarDays,
+  BookOpen,
   Sun,
   Moon,
   RotateCcw,
@@ -10,7 +12,6 @@ import {
   CheckSquare,
   Clock,
   ArrowRight,
-  LayoutGrid,
   FileText,
   Sparkles,
 } from 'lucide-react';
@@ -91,13 +92,24 @@ export const CommandPalette: React.FC = () => {
 
   const commands: CommandItem[] = [
     {
-      id: 'nav-home',
-      title: 'Go to Home Dashboard',
+      id: 'nav-today',
+      title: 'Go to Today Workspace',
       category: 'Navigation',
-      icon: LayoutGrid,
+      icon: CalendarDays,
       shortcut: '1',
       action: () => {
-        setActiveTab('home');
+        setActiveTab('today');
+        setCommandPaletteOpen(false);
+      },
+    },
+    {
+      id: 'nav-courses',
+      title: 'Go to Courses & LMS',
+      category: 'Navigation',
+      icon: BookOpen,
+      shortcut: '2',
+      action: () => {
+        setActiveTab('courses');
         setCommandPaletteOpen(false);
       },
     },
@@ -106,7 +118,7 @@ export const CommandPalette: React.FC = () => {
       title: 'Go to Tasks & Projects',
       category: 'Navigation',
       icon: CheckSquare,
-      shortcut: '2',
+      shortcut: '3',
       action: () => {
         setActiveTab('tasks');
         setCommandPaletteOpen(false);
@@ -117,7 +129,7 @@ export const CommandPalette: React.FC = () => {
       title: 'Go to Calendar & Schedule',
       category: 'Navigation',
       icon: Clock,
-      shortcut: '3',
+      shortcut: '4',
       action: () => {
         setActiveTab('schedule');
         setCommandPaletteOpen(false);
@@ -128,7 +140,7 @@ export const CommandPalette: React.FC = () => {
       title: 'Go to Notes & Vault',
       category: 'Navigation',
       icon: FileText,
-      shortcut: '4',
+      shortcut: '5',
       action: () => {
         setActiveTab('notes');
         setCommandPaletteOpen(false);
@@ -139,7 +151,7 @@ export const CommandPalette: React.FC = () => {
       title: 'Go to Habits & Metrics',
       category: 'Navigation',
       icon: Sparkles,
-      shortcut: '5',
+      shortcut: '6',
       action: () => {
         setActiveTab('habits');
         setCommandPaletteOpen(false);

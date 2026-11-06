@@ -86,6 +86,10 @@ pub struct WidgetConfig {
     pub y: u32,
     pub w: u32,
     pub h: u32,
+    #[serde(rename = "minW", default)]
+    pub min_w: Option<u32>,
+    #[serde(rename = "minH", default)]
+    pub min_h: Option<u32>,
     #[serde(default = "default_true")]
     pub visible: bool,
     #[serde(default = "default_workspace")]
@@ -109,7 +113,11 @@ pub struct LayoutConfig {
     #[serde(default = "default_workspace")]
     pub active_workspace: String,
     #[serde(default)]
-    pub widgets: Vec<WidgetConfig>,
+    pub sidebar_collapsed: bool,
+    #[serde(default)]
+    pub pane_sizes: HashMap<String, f64>,
+    #[serde(default)]
+    pub widgets: Option<Vec<WidgetConfig>>,
     #[serde(default)]
     pub slots: Option<Vec<GridSlot>>,
     #[serde(default)]
