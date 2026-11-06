@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 use std::io::BufReader;
 use std::path::Path;
+use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use ical::IcalParser;
 use regex::Regex;
 use serde_json::{json, Value};
 use sqlx::SqlitePool;
+use tokio::sync::Semaphore;
 
 use super::client::{get_authenticated_client, LMS_BASE, LMS_MY_PAGE};
 use crate::models::{Assignment, Course};
@@ -35,6 +37,32 @@ pub struct ParsedCalendarEvent {
     pub end_date: String,
     pub end_time: String,
     pub is_deadline: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct CalendarDeadline {
+    pub cmid: u64,
+    pub title: String,
+    pub course_id: u64,
+    pub timesort: i64,
+    pub due_date: String,
+    pub due_text: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct HandoutItem {
+    pub name: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ScrapedAssignmentDetails {
+    pub status: String,
+    pub weight: Option<String>,
+    pub description: Option<String>,
+    pub due_date_text: Option<String>,
+    pub handouts: Vec<HandoutItem>,
 }
 
 /// Parses raw iCalendar (.ics) string using the `ical` crate.
@@ -218,6 +246,48 @@ pub async fn call_moodle_ajax(
     Ok(json)
 }
 
+pub fn decode_entities(text: &str) -> String {
+    if !text.contains('&') {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find('&') {
+        out.push_str(&rest[..start]);
+        rest = &rest[start..];
+        let decoded = rest.find(';').filter(|end| *end <= 10).and_then(|end| {
+            let entity = &rest[1..end];
+            let character = match entity {
+                "amp" => Some('&'),
+                "lt" => Some('<'),
+                "gt" => Some('>'),
+                "quot" => Some('"'),
+                "apos" | "#39" => Some('\''),
+                "nbsp" => Some(' '),
+                _ => entity
+                    .strip_prefix("#x")
+                    .or_else(|| entity.strip_prefix("#X"))
+                    .and_then(|hex| u32::from_str_radix(hex, 16).ok())
+                    .or_else(|| entity.strip_prefix('#').and_then(|dec| dec.parse().ok()))
+                    .and_then(char::from_u32),
+            }?;
+            Some((character, end))
+        });
+        match decoded {
+            Some((character, end)) => {
+                out.push(character);
+                rest = &rest[end + 1..];
+            }
+            None => {
+                out.push('&');
+                rest = &rest[1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 fn strip_html_tags(html: &str) -> String {
     let mut result = String::new();
     let mut in_tag = false;
@@ -230,15 +300,11 @@ fn strip_html_tags(html: &str) -> String {
             result.push(c);
         }
     }
-    result
-        .replace("&nbsp;", " ")
-        .replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&#39;", "'")
-        .replace("&quot;", "\"")
-        .trim()
-        .to_string()
+    decode_entities(
+        &result
+            .replace("&nbsp;", " ")
+            .trim(),
+    )
 }
 
 fn parse_course_code(shortname: &str) -> String {
@@ -741,6 +807,445 @@ pub fn parse_course_quarter(c: &Value, title: &str, code: &str, fallback_quarter
     infer_quarter_from_title_or_code(title, code, fallback_quarter).to_string()
 }
 
+/// Scrapes assignment details, instructions, handout attachments, and submission status from /mod/{module}/view.php.
+pub async fn scrape_module_page(
+    client: &reqwest::Client,
+    module: &str,
+    cmid: u64,
+) -> Result<ScrapedAssignmentDetails> {
+    let url = format!("{}/mod/{}/view.php?id={}", LMS_BASE, module, cmid);
+    let resp = match client.get(&url).send().await {
+        Ok(r) => r,
+        Err(e) => {
+            log::warn!("Failed to fetch view.php for cmid {}: {}", cmid, e);
+            return Ok(ScrapedAssignmentDetails::default());
+        }
+    };
+
+    if !resp.status().is_success() {
+        return Ok(ScrapedAssignmentDetails::default());
+    }
+
+    let is_html = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|ct| ct.contains("text/html"))
+        .unwrap_or(false);
+
+    if !is_html {
+        return Ok(ScrapedAssignmentDetails::default());
+    }
+
+    let html = resp.text().await.unwrap_or_default();
+    if html.is_empty() {
+        return Ok(ScrapedAssignmentDetails::default());
+    }
+
+    // Scoped HTML parsing so scraper::Html is dropped before returning
+    let details = {
+        let doc = scraper::Html::parse_document(&html);
+        let root = doc.root_element();
+
+        let (status, weight) = match module {
+            "assign" => {
+                let table_sel = scraper::Selector::parse(".submissionstatustable").unwrap();
+                if let Some(table) = root.select(&table_sel).next() {
+                    let graded_sel = scraper::Selector::parse("td.submissiongraded").unwrap();
+                    let submitted_sel = scraper::Selector::parse("td.submissionstatussubmitted").unwrap();
+                    let st = if table.select(&graded_sel).next().is_some() {
+                        "graded".to_string()
+                    } else if table.select(&submitted_sel).next().is_some() {
+                        "submitted".to_string()
+                    } else {
+                        "pending".to_string()
+                    };
+
+                    let feedback_sel = scraper::Selector::parse(".feedback .feedbacktable table tr td").unwrap();
+                    let grade_opt = table
+                        .select(&feedback_sel)
+                        .next()
+                        .or_else(|| root.select(&feedback_sel).next())
+                        .and_then(|cell| {
+                            let text = cell.text().collect::<String>().trim().to_string();
+                            if !text.is_empty() && text != "-" {
+                                Some(format!("Graded: {}", text))
+                            } else {
+                                None
+                            }
+                        });
+
+                    (st, grade_opt)
+                } else {
+                    ("pending".to_string(), None)
+                }
+            }
+            "quiz" => {
+                let attempt_sel = scraper::Selector::parse(".quizattempt").unwrap();
+                if root.select(&attempt_sel).next().is_some() {
+                    let summary_tr_sel = scraper::Selector::parse("table.quizreviewsummary tr").unwrap();
+                    let tr_count = root.select(&summary_tr_sel).count();
+                    let finished = tr_count >= 3;
+
+                    let feedback_h3_sel = scraper::Selector::parse("#feedback h3").unwrap();
+                    static PAIR_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+                    let re = PAIR_RE.get_or_init(|| regex::Regex::new(r"(\d[\d.,]*)\s*/\s*(\d[\d.,]*)").unwrap());
+
+                    let mut grade_str = None;
+                    for h3 in root.select(&feedback_h3_sel) {
+                        let text = h3.text().collect::<String>();
+                        if let Some(caps) = re.captures(&text) {
+                            if let (Some(m1), Some(m2)) = (caps.get(1), caps.get(2)) {
+                                grade_str = Some(format!("Graded: {} / {}", m1.as_str(), m2.as_str()));
+                                break;
+                            }
+                        }
+                    }
+
+                    if grade_str.is_some() {
+                        ("graded".to_string(), grade_str)
+                    } else if finished {
+                        ("submitted".to_string(), None)
+                    } else {
+                        ("pending".to_string(), None)
+                    }
+                } else {
+                    ("pending".to_string(), None)
+                }
+            }
+            _ => ("pending".to_string(), None),
+        };
+
+        // Instructions and Dates from [data-region="activity-dates"] and #intro
+        let intro_sel = scraper::Selector::parse("#intro").unwrap();
+        let dates_sel = scraper::Selector::parse(r#"[data-region="activity-dates"], [data-region="activity-information"]"#).unwrap();
+
+        let mut desc_parts = Vec::new();
+
+        if let Some(dates_el) = root.select(&dates_sel).next() {
+            let t = dates_el.text().collect::<Vec<_>>().join(" ");
+            let clean = t.split_whitespace().collect::<Vec<_>>().join(" ");
+            if !clean.is_empty() {
+                desc_parts.push(clean);
+            }
+        }
+
+        if let Some(intro_el) = root.select(&intro_sel).next() {
+            let t = intro_el.text().collect::<Vec<_>>().join(" ");
+            let clean = t.split_whitespace().collect::<Vec<_>>().join(" ");
+            if !clean.is_empty() {
+                desc_parts.push(clean);
+            }
+        }
+
+        let description = if !desc_parts.is_empty() {
+            Some(desc_parts.join("\n\n"))
+        } else {
+            None
+        };
+
+        // Due date text fallback from page
+        let mut page_due_date = None;
+        let tr_sel = scraper::Selector::parse(".submissionstatustable tr").unwrap();
+        let th_sel = scraper::Selector::parse("th").unwrap();
+        let td_sel = scraper::Selector::parse("td").unwrap();
+
+        for tr in root.select(&tr_sel) {
+            if let Some(th) = tr.select(&th_sel).next() {
+                let th_text = th.text().collect::<String>().to_lowercase();
+                if th_text.contains("due") || th_text.contains("期限") || th_text.contains("終了") {
+                    if let Some(td) = tr.select(&td_sel).next() {
+                        let val = td.text().collect::<String>().trim().to_string();
+                        if !val.is_empty() && val != "-" {
+                            page_due_date = Some(val);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if page_due_date.is_none() {
+            if let Some(dates_el) = root.select(&dates_sel).next() {
+                let t = dates_el.text().collect::<String>();
+                for line in t.lines() {
+                    let l_lower = line.to_lowercase();
+                    if l_lower.contains("due:") || l_lower.contains("期限:") || l_lower.contains("due date") {
+                        let clean = line.replace("Due:", "").replace("期限:", "").trim().to_string();
+                        if !clean.is_empty() {
+                            page_due_date = Some(clean);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Handout files inside #intro or generalbox, ignoring student submission tables
+        let plugin_link_sel = scraper::Selector::parse(r#"a[href*="/pluginfile.php/"]"#).unwrap();
+        let mut handouts = Vec::new();
+
+        for a in root.select(&plugin_link_sel) {
+            let mut is_submission = false;
+            let mut curr = a.parent();
+            while let Some(parent) = curr {
+                if let Some(elem) = scraper::ElementRef::wrap(parent) {
+                    if elem.value().classes().any(|c| c == "submissionstatustable") {
+                        is_submission = true;
+                        break;
+                    }
+                }
+                curr = parent.parent();
+            }
+
+            if !is_submission {
+                if let Some(href) = a.value().attr("href") {
+                    let raw_text = a.text().collect::<String>().trim().to_string();
+                    let name = if !raw_text.is_empty() {
+                        decode_entities(&raw_text)
+                    } else {
+                        href.rsplit('/').next().unwrap_or("handout").to_string()
+                    };
+
+                    if !handouts.iter().any(|h: &HandoutItem| h.url == href) {
+                        handouts.push(HandoutItem {
+                            name,
+                            url: href.to_string(),
+                        });
+                    }
+                }
+            }
+        }
+
+        ScrapedAssignmentDetails {
+            status,
+            weight,
+            description,
+            due_date_text: page_due_date,
+            handouts,
+        }
+    };
+
+    Ok(details)
+}
+
+/// Fetches complete deadlines from action events, upcoming view, and monthly calendar views.
+pub async fn fetch_all_calendar_deadlines(
+    client: &reqwest::Client,
+    sesskey: &str,
+) -> HashMap<u64, CalendarDeadline> {
+    let mut deadlines = HashMap::new();
+
+    // 1. Action events by timesort
+    if let Ok(action_data) = call_moodle_ajax(
+        client,
+        sesskey,
+        "core_calendar_get_action_events_by_timesort",
+        json!({
+            "timesortfrom": 0,
+            "limitnum": 100
+        }),
+    )
+    .await
+    {
+        if let Some(events_list) = action_data.get("events").and_then(Value::as_array) {
+            for ev in events_list {
+                let cmid = ev
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .and_then(extract_cmid_from_url)
+                    .or_else(|| ev.get("instance").and_then(Value::as_u64));
+
+                if let Some(id) = cmid {
+                    let timesort = ev
+                        .get("timesort")
+                        .or_else(|| ev.get("timestart"))
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0);
+                    let (due_date, due_text) = format_timesort_due(timesort);
+                    let raw_name = ev
+                        .get("name")
+                        .or_else(|| ev.get("activityname"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("Untitled Assignment");
+                    let name = decode_entities(raw_name);
+                    let course_id = ev
+                        .get("course")
+                        .and_then(|c| c.get("id"))
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0);
+                    let desc = strip_html_tags(ev.get("description").and_then(Value::as_str).unwrap_or(""));
+
+                    deadlines.insert(
+                        id,
+                        CalendarDeadline {
+                            cmid: id,
+                            title: name,
+                            course_id,
+                            timesort,
+                            due_date,
+                            due_text,
+                            description: desc,
+                        },
+                    );
+                }
+            }
+        }
+    }
+
+    // 2. Upcoming calendar view
+    if let Ok(upcoming_data) = call_moodle_ajax(
+        client,
+        sesskey,
+        "core_calendar_get_calendar_upcoming_view",
+        json!({
+            "courseid": 1,
+            "categoryid": 0
+        }),
+    )
+    .await
+    {
+        if let Some(events_list) = upcoming_data.get("events").and_then(Value::as_array) {
+            for ev in events_list {
+                let module = ev.get("modulename").and_then(Value::as_str).unwrap_or("");
+                let url_str = ev.get("url").and_then(Value::as_str).unwrap_or("");
+                if module == "assign"
+                    || module == "quiz"
+                    || url_str.contains("/mod/assign/")
+                    || url_str.contains("/mod/quiz/")
+                {
+                    if let Some(id) = extract_cmid_from_url(url_str)
+                        .or_else(|| ev.get("instance").and_then(Value::as_u64))
+                    {
+                        let timesort = ev
+                            .get("timesort")
+                            .or_else(|| ev.get("timestart"))
+                            .and_then(Value::as_i64)
+                            .unwrap_or(0);
+                        let (due_date, due_text) = format_timesort_due(timesort);
+                        let raw_name = ev
+                            .get("name")
+                            .or_else(|| ev.get("activityname"))
+                            .and_then(Value::as_str)
+                            .unwrap_or("Untitled Assignment");
+                        let name = decode_entities(raw_name);
+                        let course_id = ev
+                            .get("course")
+                            .and_then(|c| c.get("id"))
+                            .and_then(Value::as_u64)
+                            .unwrap_or(0);
+                        let desc = strip_html_tags(ev.get("description").and_then(Value::as_str).unwrap_or(""));
+
+                        deadlines.entry(id).or_insert(CalendarDeadline {
+                            cmid: id,
+                            title: name,
+                            course_id,
+                            timesort,
+                            due_date,
+                            due_text,
+                            description: desc,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Monthly calendar view (current month, previous month, and next month)
+    let now_utc = chrono::Utc::now();
+    let jst = chrono::FixedOffset::east_opt(9 * 3600).unwrap();
+    let now_jst = now_utc.with_timezone(&jst).date_naive();
+    let cur_year = now_jst.year();
+    let cur_month = now_jst.month();
+
+    let prev_year = if cur_month == 1 { cur_year - 1 } else { cur_year };
+    let prev_month = if cur_month == 1 { 12 } else { cur_month - 1 };
+
+    let next_year = if cur_month == 12 { cur_year + 1 } else { cur_year };
+    let next_month = if cur_month == 12 { 1 } else { cur_month + 1 };
+
+    let months = [
+        (cur_year, cur_month),
+        (prev_year, prev_month),
+        (next_year, next_month),
+    ];
+
+    for (y, m) in months {
+        if let Ok(month_data) = call_moodle_ajax(
+            client,
+            sesskey,
+            "core_calendar_get_calendar_monthly_view",
+            json!({
+                "year": y,
+                "month": m,
+                "courseid": 1,
+                "categoryid": 0,
+                "day": 1
+            }),
+        )
+        .await
+        {
+            if let Some(weeks) = month_data.get("weeks").and_then(Value::as_array) {
+                for week in weeks {
+                    if let Some(days) = week.get("days").and_then(Value::as_array) {
+                        for day in days {
+                            if let Some(events) = day.get("events").and_then(Value::as_array) {
+                                for ev in events {
+                                    let module = ev.get("modulename").and_then(Value::as_str).unwrap_or("");
+                                    let url_str = ev.get("url").and_then(Value::as_str).unwrap_or("");
+                                    let eventtype = ev.get("eventtype").and_then(Value::as_str).unwrap_or("");
+
+                                    if (module == "assign"
+                                        || module == "quiz"
+                                        || url_str.contains("/mod/assign/")
+                                        || url_str.contains("/mod/quiz/"))
+                                        && (eventtype == "due" || eventtype == "close" || eventtype.is_empty())
+                                    {
+                                        if let Some(id) = extract_cmid_from_url(url_str)
+                                            .or_else(|| ev.get("instance").and_then(Value::as_u64))
+                                        {
+                                            let timesort = ev
+                                                .get("timesort")
+                                                .or_else(|| ev.get("timestart"))
+                                                .and_then(Value::as_i64)
+                                                .unwrap_or(0);
+                                            let (due_date, due_text) = format_timesort_due(timesort);
+                                            let raw_name = ev
+                                                .get("name")
+                                                .or_else(|| ev.get("activityname"))
+                                                .and_then(Value::as_str)
+                                                .unwrap_or("Untitled Assignment");
+                                            let name = decode_entities(raw_name);
+                                            let course_id = ev
+                                                .get("course")
+                                                .and_then(|c| c.get("id"))
+                                                .and_then(Value::as_u64)
+                                                .unwrap_or(0);
+                                            let desc = strip_html_tags(ev.get("description").and_then(Value::as_str).unwrap_or(""));
+
+                                            deadlines.entry(id).or_insert(CalendarDeadline {
+                                                cmid: id,
+                                                title: name,
+                                                course_id,
+                                                timesort,
+                                                due_date,
+                                                due_text,
+                                                description: desc,
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    deadlines
+}
+
 /// Fetches real enrolled courses and assignments from Science Tokyo LMS via Moodle Web Services API.
 pub async fn fetch_real_lms_courses_and_assignments(
     client: &reqwest::Client,
@@ -777,67 +1282,115 @@ pub async fn fetch_real_lms_courses_and_assignments(
 
     log::info!("Discovered {} courses on Science Tokyo LMS", course_items.len());
 
-    // 2. Fetch action events (upcoming assignments across all courses)
-    let action_events_data = call_moodle_ajax(
-        client,
-        sesskey,
-        "core_calendar_get_action_events_by_timesort",
-        json!({
-            "timesortfrom": 0,
-            "limitnum": 100
-        }),
-    )
-    .await
-    .ok();
+    // 2. Fetch complete deadlines from Action Events, Upcoming View & Monthly Calendar
+    let calendar_deadlines = fetch_all_calendar_deadlines(client, sesskey).await;
+    log::info!(
+        "Discovered {} calendar assignment/quiz deadlines across Moodle calendar feeds",
+        calendar_deadlines.len()
+    );
 
-    let mut course_assignments_map: HashMap<u64, Vec<Assignment>> = HashMap::new();
+    // 3. For each course, fetch course outline state via core_courseformat_get_state
+    // parsing double-encoded JSON and collecting target assign/quiz modules for page scraping
+    struct RawCourseModule {
+        cmid: u64,
+        module: String,
+        name: String,
+    }
 
-    if let Some(events_obj) = action_events_data {
-        if let Some(events_list) = events_obj.get("events").and_then(Value::as_array) {
-            for ev in events_list {
-                let event_id = ev.get("id").and_then(Value::as_u64).unwrap_or(0);
-                let name = ev
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .unwrap_or("Untitled Assignment")
-                    .to_string();
-                let desc_raw = ev.get("description").and_then(Value::as_str).unwrap_or("");
-                let desc = strip_html_tags(desc_raw);
-                let timesort = ev.get("timesort").and_then(Value::as_i64).unwrap_or(0);
-                let course_id = ev
-                    .get("course")
-                    .and_then(|c| c.get("id"))
-                    .and_then(Value::as_u64)
-                    .unwrap_or(0);
+    let mut course_modules_map: HashMap<u64, Vec<RawCourseModule>> = HashMap::new();
+    let mut all_scrape_targets: Vec<(u64, String)> = Vec::new();
 
-                let (due_date_str, due_text_str) = format_timesort_due(timesort);
-                let cmid = ev
-                    .get("url")
-                    .and_then(Value::as_str)
-                    .and_then(extract_cmid_from_url)
-                    .or_else(|| ev.get("instance").and_then(Value::as_u64))
-                    .map(|id| id.to_string())
-                    .unwrap_or_else(|| format!("assign-{}", event_id));
+    for c in course_items {
+        let course_id_num = c.get("id").and_then(Value::as_u64).unwrap_or(0);
+        if course_id_num == 0 {
+            continue;
+        }
 
-                let a = Assignment {
-                    id: cmid,
-                    course_id: course_id.to_string(),
-                    title: name,
-                    due_date: due_date_str,
-                    due_text: due_text_str,
-                    status: "pending".to_string(),
-                    weight: "LMS Activity".to_string(),
-                    description: desc,
-                    handout_name: String::new(),
-                    updated_at: Utc::now().to_rfc3339(),
-                };
+        let raw_state = match call_moodle_ajax(
+            client,
+            sesskey,
+            "core_courseformat_get_state",
+            json!({ "courseid": course_id_num }),
+        )
+        .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                log::warn!("Failed to fetch courseformat_get_state for course {}: {}", course_id_num, e);
+                Value::Null
+            }
+        };
 
-                course_assignments_map.entry(course_id).or_default().push(a);
+        // Handle double-encoded JSON: Moodle returns data as JSON-encoded string
+        let full_state: Value = match &raw_state {
+            Value::String(text) => serde_json::from_str::<Value>(text).unwrap_or(Value::Null),
+            other => {
+                if let Some(data_str) = other.get("data").and_then(Value::as_str) {
+                    serde_json::from_str::<Value>(data_str).unwrap_or(Value::Null)
+                } else {
+                    other.clone()
+                }
+            }
+        };
+
+        if let Some(cms) = full_state.get("cm").and_then(Value::as_array) {
+            for cm in cms {
+                let module = cm.get("module").and_then(Value::as_str).unwrap_or("").to_string();
+                if module == "assign" || module == "quiz" {
+                    let cmid = cm
+                        .get("id")
+                        .and_then(Value::as_u64)
+                        .or_else(|| cm.get("id").and_then(Value::as_str).and_then(|s| s.parse().ok()))
+                        .unwrap_or(0);
+
+                    if cmid > 0 {
+                        let raw_name = cm.get("name").and_then(Value::as_str).unwrap_or("Assignment");
+                        let name = decode_entities(raw_name);
+
+                        course_modules_map.entry(course_id_num).or_default().push(RawCourseModule {
+                            cmid,
+                            module: module.clone(),
+                            name,
+                        });
+
+                        if !all_scrape_targets.iter().any(|(id, _)| *id == cmid) {
+                            all_scrape_targets.push((cmid, module));
+                        }
+                    }
+                }
             }
         }
     }
 
-    // 3. Assemble courses with exact timetable quarter and schedule
+    // 4. Concurrently scrape assignment details (instructions, handouts, submission status, grade)
+    // for up to 30 modules using tokio::task::JoinSet with bounded concurrency
+    let sem = Arc::new(Semaphore::new(8));
+    let mut set = tokio::task::JoinSet::new();
+
+    for (cmid, module) in all_scrape_targets.into_iter().take(30) {
+        let client_clone = client.clone();
+        let sem_clone = sem.clone();
+        set.spawn(async move {
+            let _permit = sem_clone.acquire().await;
+            let details = scrape_module_page(&client_clone, &module, cmid)
+                .await
+                .unwrap_or_default();
+            (cmid, details)
+        });
+    }
+
+    let mut scraped_map: HashMap<u64, ScrapedAssignmentDetails> = HashMap::new();
+    while let Some(res) = set.join_next().await {
+        if let Ok((cmid, details)) = res {
+            scraped_map.insert(cmid, details);
+        }
+    }
+    log::info!(
+        "Scraped real details, instructions & status for {} LMS modules",
+        scraped_map.len()
+    );
+
+    // 5. Assemble final courses
     let mut final_courses = Vec::new();
 
     for (idx, c) in course_items.iter().enumerate() {
@@ -855,8 +1408,7 @@ pub async fn fetch_real_lms_courses_and_assignments(
             .trim();
 
         let code = parse_course_code(shortname);
-        let title = clean_course_title(fullname);
-
+        let title = clean_course_title(&decode_entities(fullname));
         let course_year = parse_academic_year(shortname, active_year);
 
         let (term, schedule) = if let Some(info) = timetable_map.get(&course_id_num) {
@@ -876,61 +1428,151 @@ pub async fn fetch_real_lms_courses_and_assignments(
 
         let color = PALETTE[idx % PALETTE.len()].to_string();
 
-        let mut assignments = course_assignments_map
-            .remove(&course_id_num)
-            .unwrap_or_default();
+        let mut assignments: Vec<Assignment> = Vec::new();
+        let raw_mods = course_modules_map.remove(&course_id_num).unwrap_or_default();
 
-        // Discover course modules
-        if let Ok(state) = call_moodle_ajax(
-            client,
-            sesskey,
-            "core_courseformat_get_state",
-            json!({ "courseid": course_id_num }),
-        )
-        .await
-        {
-            if let Some(cms) = state.get("cm").and_then(Value::as_array) {
-                for cm in cms {
-                    let module_type = cm.get("module").and_then(Value::as_str).unwrap_or("");
-                    if module_type == "assign" || module_type == "quiz" {
-                        let cm_id = cm
-                            .get("id")
-                            .and_then(Value::as_u64)
-                            .map(|v| v.to_string())
-                            .or_else(|| {
-                                cm.get("id")
-                                    .and_then(Value::as_str)
-                                    .map(|s| s.to_string())
-                            })
-                            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-                        let cm_name = cm
-                            .get("name")
-                            .and_then(Value::as_str)
-                            .unwrap_or("Assignment")
-                            .to_string();
+        for m in raw_mods {
+            let cmid_str = m.cmid.to_string();
+            let dl_opt = calendar_deadlines.get(&m.cmid);
+            let sc_opt = scraped_map.get(&m.cmid);
 
-                        if let Some(existing) = assignments.iter_mut().find(|existing| {
-                            existing.id == cm_id || existing.title.eq_ignore_ascii_case(&cm_name)
-                        }) {
-                            existing.id = cm_id;
-                            if existing.title == "Untitled Assignment" {
-                                existing.title = cm_name;
-                            }
-                        } else {
-                            assignments.push(Assignment {
-                                id: cm_id,
-                                course_id: course_id_str.clone(),
-                                title: cm_name,
-                                due_date: "Active in Course Outline".to_string(),
-                                due_text: "Course Task".to_string(),
-                                status: "pending".to_string(),
-                                weight: "Moodle Task".to_string(),
-                                description: format!("Activity in {}", title),
-                                handout_name: String::new(),
-                                updated_at: Utc::now().to_rfc3339(),
-                            });
-                        }
+            let a_title = if !m.name.is_empty() && m.name != "Assignment" {
+                m.name.clone()
+            } else if let Some(dl) = dl_opt {
+                dl.title.clone()
+            } else {
+                m.name.clone()
+            };
+
+            let status = if let Some(sc) = sc_opt {
+                sc.status.clone()
+            } else {
+                "pending".to_string()
+            };
+
+            let weight = if let Some(sc) = sc_opt {
+                if let Some(w) = &sc.weight {
+                    w.clone()
+                } else if m.module == "quiz" {
+                    "Moodle Quiz".to_string()
+                } else {
+                    "Moodle Task".to_string()
+                }
+            } else if m.module == "quiz" {
+                "Moodle Quiz".to_string()
+            } else {
+                "Moodle Task".to_string()
+            };
+
+            let description = if let Some(sc) = sc_opt {
+                if let Some(desc) = &sc.description {
+                    desc.clone()
+                } else if let Some(dl) = dl_opt {
+                    if !dl.description.is_empty() {
+                        dl.description.clone()
+                    } else {
+                        format!("Activity in {}", title)
                     }
+                } else {
+                    format!("Activity in {}", title)
+                }
+            } else if let Some(dl) = dl_opt {
+                if !dl.description.is_empty() {
+                    dl.description.clone()
+                } else {
+                    format!("Activity in {}", title)
+                }
+            } else {
+                format!("Activity in {}", title)
+            };
+
+            let (due_date, due_text) = if let Some(dl) = dl_opt {
+                (dl.due_date.clone(), dl.due_text.clone())
+            } else if let Some(sc) = sc_opt {
+                if let Some(d_text) = &sc.due_date_text {
+                    (d_text.clone(), "Course Due Date".to_string())
+                } else {
+                    ("Active in Course Outline".to_string(), "Course Task".to_string())
+                }
+            } else {
+                ("Active in Course Outline".to_string(), "Course Task".to_string())
+            };
+
+            let handout_name = if let Some(sc) = sc_opt {
+                if !sc.handouts.is_empty() {
+                    serde_json::to_string(&sc.handouts).unwrap_or_default()
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            assignments.push(Assignment {
+                id: cmid_str,
+                course_id: course_id_str.clone(),
+                title: a_title,
+                due_date,
+                due_text,
+                status,
+                weight,
+                description,
+                handout_name,
+                updated_at: Utc::now().to_rfc3339(),
+            });
+        }
+
+        // Also add any calendar deadlines for this course not discovered in outline
+        for (cmid, dl) in &calendar_deadlines {
+            if dl.course_id == course_id_num {
+                let cmid_str = cmid.to_string();
+                if !assignments.iter().any(|a| a.id == cmid_str) {
+                    let sc_opt = scraped_map.get(cmid);
+                    let status = if let Some(sc) = sc_opt {
+                        sc.status.clone()
+                    } else {
+                        "pending".to_string()
+                    };
+                    let weight = if let Some(sc) = sc_opt {
+                        sc.weight.clone().unwrap_or_else(|| "LMS Activity".to_string())
+                    } else {
+                        "LMS Activity".to_string()
+                    };
+                    let description = if let Some(sc) = sc_opt {
+                        sc.description.clone().unwrap_or_else(|| {
+                            if !dl.description.is_empty() {
+                                dl.description.clone()
+                            } else {
+                                format!("Activity in {}", title)
+                            }
+                        })
+                    } else if !dl.description.is_empty() {
+                        dl.description.clone()
+                    } else {
+                        format!("Activity in {}", title)
+                    };
+                    let handout_name = if let Some(sc) = sc_opt {
+                        if !sc.handouts.is_empty() {
+                            serde_json::to_string(&sc.handouts).unwrap_or_default()
+                        } else {
+                            String::new()
+                        }
+                    } else {
+                        String::new()
+                    };
+
+                    assignments.push(Assignment {
+                        id: cmid_str,
+                        course_id: course_id_str.clone(),
+                        title: dl.title.clone(),
+                        due_date: dl.due_date.clone(),
+                        due_text: dl.due_text.clone(),
+                        status,
+                        weight,
+                        description,
+                        handout_name,
+                        updated_at: Utc::now().to_rfc3339(),
+                    });
                 }
             }
         }
@@ -1178,6 +1820,29 @@ pub async fn upsert_courses(pool: &SqlitePool, courses: &[Course]) -> Result<()>
         .execute(pool)
         .await?;
 
+        // Clean up legacy assign-* rows for this course
+        let _ = sqlx::query("DELETE FROM assignments WHERE course_id = ? AND id LIKE 'assign-%'")
+            .bind(&course.id)
+            .execute(pool)
+            .await;
+        let _ = sqlx::query("DELETE FROM tasks WHERE source = 'science_tokyo' AND id LIKE 'assign-task-assign-%'")
+            .execute(pool)
+            .await;
+
+        // Clean up any stale assignments for this course that are no longer present
+        if !course.assignments.is_empty() {
+            let placeholders = vec!["?"; course.assignments.len()].join(",");
+            let delete_sql = format!(
+                "DELETE FROM assignments WHERE course_id = ? AND id NOT IN ({})",
+                placeholders
+            );
+            let mut query = sqlx::query(&delete_sql).bind(&course.id);
+            for a in &course.assignments {
+                query = query.bind(&a.id);
+            }
+            let _ = query.execute(pool).await;
+        }
+
         for a in &course.assignments {
             sqlx::query(
                 r#"
@@ -1236,7 +1901,6 @@ pub async fn upsert_courses(pool: &SqlitePool, courses: &[Course]) -> Result<()>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[tokio::test]
     async fn test_live_sync_execution() {

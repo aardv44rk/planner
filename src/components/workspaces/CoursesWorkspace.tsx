@@ -9,6 +9,9 @@ import {
   GraduationCap,
   Search,
   RefreshCw,
+  Download,
+  ExternalLink,
+  Award,
 } from 'lucide-react';
 import { ResizableWorkspace } from '../ResizableWorkspace';
 import { Tag, Button, Input } from '../ui/controls';
@@ -16,6 +19,36 @@ import { api } from '../../utils/ipc';
 import { Course, Assignment, PickedFileResult } from '../../types';
 import { useCommandCenterStore } from '../../stores/commandCenterStore';
 import { courseMatchesQuarter, sortCoursesForDisplay, getAvailableAcademicYears } from '../../utils/academic';
+
+interface HandoutItemData {
+  name: string;
+  url?: string;
+}
+
+function parseHandouts(raw?: string): HandoutItemData[] {
+  if (!raw || !raw.trim()) return [];
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter((item) => item && typeof item.name === 'string' && item.name.trim().length > 0)
+          .map((item) => ({
+            name: item.name.trim(),
+            url: typeof item.url === 'string' && item.url.startsWith('http') ? item.url : undefined,
+          }));
+      }
+    } catch {
+      // fallback
+    }
+  }
+  return trimmed
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .map((name) => ({ name }));
+}
 
 export const CoursesWorkspace: React.FC = () => {
   const {
@@ -38,6 +71,7 @@ export const CoursesWorkspace: React.FC = () => {
   const [submissionMessage, setSubmissionMessage] = useState<string>('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  const [assignmentFilter, setAssignmentFilter] = useState<'all' | 'pending' | 'completed'>('all');
 
   useEffect(() => {
     loadCoursesFromDb();
@@ -69,18 +103,65 @@ export const CoursesWorkspace: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    if (courses.length > 0) {
-      const matching = courses.filter((c) =>
-        courseMatchesQuarter(c.term, selectedQuarter, selectedAcademicYear)
-      );
-      const sorted = sortCoursesForDisplay(matching);
-      if (sorted.length > 0 && (!selectedCourse || !sorted.some(c => c.id === selectedCourse.id))) {
-        setSelectedCourse(sorted[0]);
-        setSelectedAssignment(sorted[0].assignments?.[0] || null);
+  const availableAcademicYears = getAvailableAcademicYears(courses);
+  const matchingCourses = courses.filter((c) =>
+    courseMatchesQuarter(c.term, selectedQuarter, selectedAcademicYear)
+  );
+  const filteredCourses = sortCoursesForDisplay(
+    matchingCourses.filter(
+      (c) =>
+        c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.code.toLowerCase().includes(searchQuery.toLowerCase()),
+    )
+  );
+
+  const { allAssignmentsCount, pendingAssignmentsCount, completedAssignmentsCount } = React.useMemo(() => {
+    let all = 0;
+    let pending = 0;
+    let completed = 0;
+    for (const c of filteredCourses) {
+      if (c.assignments) {
+        for (const a of c.assignments) {
+          all += 1;
+          if (a.status === 'pending') {
+            pending += 1;
+          } else if (a.status === 'submitted' || a.status === 'graded') {
+            completed += 1;
+          }
+        }
       }
     }
-  }, [selectedQuarter, selectedAcademicYear, courses]);
+    return { allAssignmentsCount: all, pendingAssignmentsCount: pending, completedAssignmentsCount: completed };
+  }, [filteredCourses]);
+
+  const coursesToRender = React.useMemo(() => {
+    return filteredCourses.filter((course) => {
+      if (assignmentFilter === 'all') return true;
+      const assignments = course.assignments || [];
+      if (assignmentFilter === 'pending') {
+        return assignments.some((a) => a.status === 'pending');
+      }
+      if (assignmentFilter === 'completed') {
+        return assignments.some((a) => a.status === 'submitted' || a.status === 'graded');
+      }
+      return true;
+    });
+  }, [filteredCourses, assignmentFilter]);
+
+  useEffect(() => {
+    if (coursesToRender.length > 0) {
+      if (!selectedCourse || !coursesToRender.some((c) => c.id === selectedCourse.id)) {
+        const first = coursesToRender[0];
+        setSelectedCourse(first);
+        const matchingAssigns = (first.assignments || []).filter((a) => {
+          if (assignmentFilter === 'pending') return a.status === 'pending';
+          if (assignmentFilter === 'completed') return a.status === 'submitted' || a.status === 'graded';
+          return true;
+        });
+        setSelectedAssignment(matchingAssigns[0] || first.assignments?.[0] || null);
+      }
+    }
+  }, [coursesToRender, selectedCourse, assignmentFilter]);
 
   const handleSyncLms = async () => {
     setIsSyncing(true);
@@ -96,18 +177,6 @@ export const CoursesWorkspace: React.FC = () => {
       setIsSyncing(false);
     }
   };
-
-  const availableAcademicYears = getAvailableAcademicYears(courses);
-  const matchingCourses = courses.filter((c) =>
-    courseMatchesQuarter(c.term, selectedQuarter, selectedAcademicYear)
-  );
-  const filteredCourses = sortCoursesForDisplay(
-    matchingCourses.filter(
-      (c) =>
-        c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.code.toLowerCase().includes(searchQuery.toLowerCase()),
-    )
-  );
 
   const handlePickFile = async () => {
     try {
@@ -260,6 +329,66 @@ export const CoursesWorkspace: React.FC = () => {
             />
           </div>
 
+          {/* Assignment Status Filter Pills */}
+          <div className="px-2 py-1.5 border-b border-subtle bg-surface-2 flex items-center gap-1 overflow-x-auto custom-scrollbar flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setAssignmentFilter('all')}
+              className={`px-2 py-1 text-[10px] font-semibold rounded-[var(--radius-chip)] transition-colors cursor-pointer flex items-center space-x-1.5 ${
+                assignmentFilter === 'all'
+                  ? 'bg-accent text-white shadow-subtle'
+                  : 'text-muted hover:text-tx-primary hover:bg-surface'
+              }`}
+            >
+              <span>All</span>
+              <span
+                className={`text-[9px] px-1 py-0.2 rounded font-mono ${
+                  assignmentFilter === 'all' ? 'bg-white/20 text-white' : 'bg-surface-3 text-muted'
+                }`}
+              >
+                {allAssignmentsCount}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAssignmentFilter('pending')}
+              className={`px-2 py-1 text-[10px] font-semibold rounded-[var(--radius-chip)] transition-colors cursor-pointer flex items-center space-x-1.5 ${
+                assignmentFilter === 'pending'
+                  ? 'bg-warn text-white shadow-subtle'
+                  : 'text-muted hover:text-tx-primary hover:bg-surface'
+              }`}
+            >
+              <Clock className="w-3 h-3 stroke-[2]" />
+              <span>Pending</span>
+              <span
+                className={`text-[9px] px-1 py-0.2 rounded font-mono ${
+                  assignmentFilter === 'pending' ? 'bg-white/20 text-white' : 'bg-surface-3 text-muted'
+                }`}
+              >
+                {pendingAssignmentsCount}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAssignmentFilter('completed')}
+              className={`px-2 py-1 text-[10px] font-semibold rounded-[var(--radius-chip)] transition-colors cursor-pointer flex items-center space-x-1.5 ${
+                assignmentFilter === 'completed'
+                  ? 'bg-ok text-white shadow-subtle'
+                  : 'text-muted hover:text-tx-primary hover:bg-surface'
+              }`}
+            >
+              <CheckCircle2 className="w-3 h-3 stroke-[2]" />
+              <span>Submitted / Graded</span>
+              <span
+                className={`text-[9px] px-1 py-0.2 rounded font-mono ${
+                  assignmentFilter === 'completed' ? 'bg-white/20 text-white' : 'bg-surface-3 text-muted'
+                }`}
+              >
+                {completedAssignmentsCount}
+              </span>
+            </button>
+          </div>
+
           {/* Course & Assignment List */}
           <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-2 space-y-2">
             {filteredCourses.length === 0 ? (
@@ -281,9 +410,32 @@ export const CoursesWorkspace: React.FC = () => {
                   Sync Science Tokyo LMS
                 </Button>
               </div>
+            ) : coursesToRender.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-48 p-4 text-center space-y-2">
+                <CheckCircle2 className="w-7 h-7 text-muted opacity-50" />
+                <div className="text-xs font-semibold text-tx-primary">
+                  No {assignmentFilter === 'pending' ? 'pending' : 'submitted / graded'} assignments found
+                </div>
+                <p className="text-[11px] text-muted max-w-xs">
+                  {assignmentFilter === 'pending'
+                    ? 'All assignments for this view are submitted or graded.'
+                    : 'No submitted assignments found for this view.'}
+                </p>
+                <Button variant="subtle" size="xs" onClick={() => setAssignmentFilter('all')}>
+                  Show All Assignments
+                </Button>
+              </div>
             ) : (
-              filteredCourses.map((course) => {
+              coursesToRender.map((course) => {
                 const isCourseSelected = selectedCourse?.id === course.id;
+                const displayedAssignments = (course.assignments || []).filter((assignment) => {
+                  if (assignmentFilter === 'pending') return assignment.status === 'pending';
+                  if (assignmentFilter === 'completed') {
+                    return assignment.status === 'submitted' || assignment.status === 'graded';
+                  }
+                  return true;
+                });
+
                 return (
                   <div
                     key={course.id}
@@ -297,7 +449,9 @@ export const CoursesWorkspace: React.FC = () => {
                     <div
                       onClick={() => {
                         setSelectedCourse(course);
-                        if (course.assignments && course.assignments[0]) {
+                        if (displayedAssignments.length > 0) {
+                          setSelectedAssignment(displayedAssignments[0]);
+                        } else if (course.assignments && course.assignments[0]) {
                           setSelectedAssignment(course.assignments[0]);
                         } else {
                           setSelectedAssignment(null);
@@ -332,16 +486,19 @@ export const CoursesWorkspace: React.FC = () => {
                       </div>
 
                       <Tag tone="neutral" variant="soft" className="text-[9px]">
-                        {course.assignments?.length || 0} Tasks
+                        {assignmentFilter === 'all'
+                          ? `${course.assignments?.length || 0} Tasks`
+                          : `${displayedAssignments.length} / ${course.assignments?.length || 0}`}
                       </Tag>
                     </div>
 
                     {/* Course Assignments List */}
-                    {course.assignments && course.assignments.length > 0 && (
+                    {displayedAssignments.length > 0 && (
                       <div className="px-2 pb-2 space-y-1">
-                        {course.assignments.map((assignment) => {
+                        {displayedAssignments.map((assignment) => {
                           const isAssignmentSelected = selectedAssignment?.id === assignment.id;
-                          const isPending = assignment.status === 'pending';
+                          const isGraded = assignment.status === 'graded';
+                          const isSubmitted = assignment.status === 'submitted';
 
                           return (
                             <div
@@ -359,10 +516,12 @@ export const CoursesWorkspace: React.FC = () => {
                               }`}
                             >
                               <div className="flex items-center space-x-2 min-w-0 pr-1">
-                                {isPending ? (
-                                  <Clock className="w-3.5 h-3.5 stroke-[1.75] flex-shrink-0 text-warn" />
+                                {isGraded ? (
+                                  <Award className="w-3.5 h-3.5 stroke-[2] flex-shrink-0 text-accent" />
+                                ) : isSubmitted ? (
+                                  <CheckCircle2 className="w-3.5 h-3.5 stroke-[2] flex-shrink-0 text-ok" />
                                 ) : (
-                                  <CheckCircle2 className="w-3.5 h-3.5 stroke-[1.75] flex-shrink-0 text-ok" />
+                                  <Clock className="w-3.5 h-3.5 stroke-[1.75] flex-shrink-0 text-warn" />
                                 )}
                                 <span className="truncate text-[11px]">
                                   {assignment.title}
@@ -370,13 +529,19 @@ export const CoursesWorkspace: React.FC = () => {
                               </div>
 
                               <span
-                                className={`text-[9px] font-mono flex-shrink-0 px-1 py-0.2 rounded ${
-                                  isPending
-                                    ? 'bg-warn-soft text-warn font-semibold'
-                                    : 'bg-ok-soft text-ok'
+                                className={`text-[9px] font-mono flex-shrink-0 px-1 py-0.2 rounded font-semibold ${
+                                  isGraded
+                                    ? 'bg-accent-soft text-accent'
+                                    : isSubmitted
+                                    ? 'bg-ok-soft text-ok'
+                                    : 'bg-warn-soft text-warn'
                                 }`}
                               >
-                                {assignment.due_text || assignment.dueText || 'Due'}
+                                {isGraded
+                                  ? (assignment.weight || 'Graded')
+                                  : isSubmitted
+                                  ? 'Submitted'
+                                  : (assignment.due_text || assignment.dueText || 'Due')}
                               </span>
                             </div>
                           );
@@ -486,13 +651,38 @@ export const CoursesWorkspace: React.FC = () => {
                       </div>
                       <div>
                         <span className="text-[10px] text-muted block font-medium">Status</span>
-                        <span className="text-xs font-semibold text-tx-primary mt-0.5 block capitalize">
-                          {selectedAssignment ? selectedAssignment.status : 'Active'}
+                        <span
+                          className={`text-xs font-semibold mt-0.5 block capitalize flex items-center gap-1.5 ${
+                            selectedAssignment?.status === 'graded'
+                              ? 'text-accent'
+                              : selectedAssignment?.status === 'submitted'
+                              ? 'text-ok'
+                              : 'text-warn'
+                          }`}
+                        >
+                          {selectedAssignment ? (
+                            <>
+                              {selectedAssignment.status === 'graded' && <Award className="w-3.5 h-3.5 stroke-[2]" />}
+                              {selectedAssignment.status === 'submitted' && <CheckCircle2 className="w-3.5 h-3.5 stroke-[2]" />}
+                              {selectedAssignment.status === 'pending' && <Clock className="w-3.5 h-3.5 stroke-[2]" />}
+                              <span>{selectedAssignment.status}</span>
+                            </>
+                          ) : (
+                            'Active'
+                          )}
                         </span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-muted block font-medium">Evaluation</span>
-                        <span className="text-xs font-semibold text-tx-primary mt-0.5 block">
+                        <span className="text-[10px] text-muted block font-medium">Evaluation / Grade</span>
+                        <span
+                          className={`text-xs font-semibold mt-0.5 block truncate ${
+                            selectedAssignment?.status === 'graded'
+                              ? 'text-accent font-bold'
+                              : selectedAssignment?.status === 'submitted'
+                              ? 'text-ok font-medium'
+                              : 'text-tx-primary'
+                          }`}
+                        >
                           {selectedAssignment?.weight || 'Coursework'}
                         </span>
                       </div>
@@ -500,6 +690,49 @@ export const CoursesWorkspace: React.FC = () => {
 
                     {/* Description & Instructions */}
                     <div className="space-y-4 text-xs leading-relaxed text-tx-primary">
+                      {/* Attached Handouts & Reference Files Card */}
+                      {(() => {
+                        const handouts = parseHandouts(selectedAssignment?.handout_name || selectedAssignment?.handoutName);
+                        if (handouts.length === 0) return null;
+                        return (
+                          <div className="space-y-2">
+                            <h3 className="font-semibold text-xs text-tx-primary flex items-center gap-1.5">
+                              <Download className="w-3.5 h-3.5 text-accent stroke-[2]" />
+                              Attached Handouts & Reference Files ({handouts.length})
+                            </h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {handouts.map((h, i) => (
+                                <a
+                                  key={i}
+                                  href={h.url || '#'}
+                                  target={h.url ? '_blank' : undefined}
+                                  rel={h.url ? 'noopener noreferrer' : undefined}
+                                  onClick={(e) => {
+                                    if (!h.url) e.preventDefault();
+                                  }}
+                                  className={`p-2.5 rounded-[var(--radius-control)] bg-surface-2 border border-subtle flex items-center justify-between text-xs transition-colors ${
+                                    h.url
+                                      ? 'hover:border-accent/40 hover:bg-elevated cursor-pointer group'
+                                      : 'opacity-80 cursor-default'
+                                  }`}
+                                  title={h.url ? `Open ${h.name}` : h.name}
+                                >
+                                  <div className="flex items-center space-x-2 min-w-0 pr-2">
+                                    <FileText className="w-4 h-4 text-accent flex-shrink-0 stroke-[1.75]" />
+                                    <span className="truncate font-medium text-tx-primary group-hover:text-accent transition-colors">
+                                      {h.name}
+                                    </span>
+                                  </div>
+                                  {h.url && (
+                                    <ExternalLink className="w-3.5 h-3.5 text-muted group-hover:text-accent flex-shrink-0" />
+                                  )}
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       <div>
                         <h3 className="font-semibold text-xs text-tx-primary mb-1.5">Description & Guidelines</h3>
                         <div className="p-4 rounded-[var(--radius-control)] bg-surface-2 border border-subtle whitespace-pre-wrap font-sans text-xs leading-relaxed text-tx-primary">
