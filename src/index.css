@@ -27,14 +27,43 @@
 
   * {
     border-color: var(--border-subtle);
-    scrollbar-width: none !important;
-    -ms-overflow-style: none !important;
   }
 
-  *::-webkit-scrollbar {
-    display: none !important;
-    width: 0 !important;
-    height: 0 !important;
+  /* Thin minimalist custom scrollbars for inner lists and dashboard */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-subtle) transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    display: block !important;
+    width: 4px !important;
+    height: 4px !important;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: var(--border-subtle);
+    border-radius: 9999px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: var(--accent);
+  }
+
+  /* Hide scrollbars on elements without .custom-scrollbar */
+  *:not(.custom-scrollbar) {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  *:not(.custom-scrollbar)::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
 
   html,

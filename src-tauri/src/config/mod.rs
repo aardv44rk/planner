@@ -15,8 +15,8 @@ pub fn get_app_config_dir() -> Result<PathBuf, std::io::Error> {
 
 pub fn default_layout() -> LayoutConfig {
     LayoutConfig {
-        version: 3,
-        active_workspace: "focus".to_string(),
+        version: 5,
+        active_workspace: "home".to_string(),
         widgets: vec![
             WidgetConfig {
                 id: "widget-kpis".to_string(),
@@ -27,7 +27,7 @@ pub fn default_layout() -> LayoutConfig {
                 w: 12,
                 h: 1,
                 visible: true,
-                workspace: "focus".to_string(),
+                workspace: "home".to_string(),
             },
             WidgetConfig {
                 id: "widget-schedule".to_string(),
@@ -36,9 +36,9 @@ pub fn default_layout() -> LayoutConfig {
                 x: 0,
                 y: 1,
                 w: 4,
-                h: 1,
+                h: 2,
                 visible: true,
-                workspace: "focus".to_string(),
+                workspace: "home".to_string(),
             },
             WidgetConfig {
                 id: "widget-scratchpad".to_string(),
@@ -47,9 +47,9 @@ pub fn default_layout() -> LayoutConfig {
                 x: 4,
                 y: 1,
                 w: 4,
-                h: 1,
+                h: 2,
                 visible: true,
-                workspace: "focus".to_string(),
+                workspace: "home".to_string(),
             },
             WidgetConfig {
                 id: "widget-tasks".to_string(),
@@ -58,55 +58,56 @@ pub fn default_layout() -> LayoutConfig {
                 x: 8,
                 y: 1,
                 w: 4,
-                h: 1,
+                h: 2,
                 visible: true,
-                workspace: "focus".to_string(),
+                workspace: "home".to_string(),
             },
             WidgetConfig {
                 id: "widget-projects".to_string(),
                 widget_type: "projects".to_string(),
                 title: "Active Projects".to_string(),
-                x: 4,
-                y: 2,
+                x: 0,
+                y: 3,
                 w: 4,
-                h: 1,
+                h: 2,
                 visible: false,
-                workspace: "full".to_string(),
+                workspace: "home".to_string(),
             },
             WidgetConfig {
                 id: "widget-time-allocation".to_string(),
                 widget_type: "time_allocation".to_string(),
                 title: "Time Allocation".to_string(),
-                x: 0,
+                x: 4,
                 y: 3,
                 w: 4,
-                h: 1,
+                h: 2,
                 visible: false,
-                workspace: "analytics".to_string(),
+                workspace: "home".to_string(),
             },
             WidgetConfig {
                 id: "widget-habit-matrix".to_string(),
                 widget_type: "habit_matrix".to_string(),
                 title: "Habit & Streak Grid".to_string(),
-                x: 4,
+                x: 8,
                 y: 3,
-                w: 5,
-                h: 1,
+                w: 4,
+                h: 2,
                 visible: false,
-                workspace: "analytics".to_string(),
+                workspace: "home".to_string(),
             },
             WidgetConfig {
                 id: "widget-quick-notes".to_string(),
                 widget_type: "quick_notes".to_string(),
                 title: "Quick Notes".to_string(),
-                x: 9,
-                y: 3,
-                w: 3,
-                h: 1,
+                x: 0,
+                y: 5,
+                w: 4,
+                h: 2,
                 visible: false,
-                workspace: "full".to_string(),
+                workspace: "home".to_string(),
             },
         ],
+        workspaces: None,
     }
 }
 
@@ -122,8 +123,8 @@ pub fn load_or_init_layout(config_dir: &Path) -> Result<LayoutConfig, Box<dyn st
     let contents = fs::read_to_string(&layout_file)?;
     match serde_json::from_str::<LayoutConfig>(&contents) {
         Ok(layout) => {
-            // Migrate older layout versions (< 3) to static focus layout
-            if layout.version < 3 {
+            // Migrate older layout versions (< 5) to single Home dashboard layout
+            if layout.version < 5 {
                 let def = default_layout();
                 let serialized = serde_json::to_string_pretty(&def)?;
                 let _ = fs::write(&layout_file, serialized);

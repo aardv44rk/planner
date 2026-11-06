@@ -40,6 +40,7 @@ interface CommandCenterState {
 
   // Schedule
   fetchSchedule: (date?: string) => Promise<void>;
+  fetchScheduleRange: (startDate: string, endDate: string) => Promise<ScheduleBlock[]>;
   createScheduleBlock: (input: CreateScheduleBlockInput) => Promise<void>;
   deleteScheduleBlock: (id: string) => Promise<void>;
   importIcs: (content: string, targetDate?: string) => Promise<number>;
@@ -142,6 +143,15 @@ export const useCommandCenterStore = create<CommandCenterState>((set, get) => ({
       set({ scheduleBlocks });
     } catch (err) {
       console.error('Failed to fetch schedule blocks:', err);
+    }
+  },
+
+  fetchScheduleRange: async (startDate: string, endDate: string) => {
+    try {
+      return await api.getScheduleBlocksRange(startDate, endDate);
+    } catch (err) {
+      console.error('Failed to fetch schedule blocks range:', err);
+      return [];
     }
   },
 

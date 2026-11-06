@@ -341,6 +341,20 @@ pub async fn get_schedule_blocks(pool: &SqlitePool, date: &str) -> Result<Vec<Sc
     .await
 }
 
+pub async fn get_schedule_blocks_range(
+    pool: &SqlitePool,
+    start_date: &str,
+    end_date: &str,
+) -> Result<Vec<ScheduleBlock>, sqlx::Error> {
+    sqlx::query_as::<_, ScheduleBlock>(
+        "SELECT id, title, start_time, end_time, category, date FROM schedule_blocks WHERE date >= ? AND date <= ? ORDER BY date ASC, start_time ASC"
+    )
+    .bind(start_date)
+    .bind(end_date)
+    .fetch_all(pool)
+    .await
+}
+
 pub async fn create_schedule_block(pool: &SqlitePool, input: CreateScheduleBlockInput) -> Result<ScheduleBlock, sqlx::Error> {
     let id = Uuid::new_v4().to_string();
     let category = input.category.unwrap_or_else(|| "General".to_string());

@@ -21,17 +21,17 @@ export const isTauri = (): boolean => {
 // Fallback in-memory storage for non-Tauri browser preview
 const fallbackDate = new Date().toISOString().split('T')[0];
 const fallbackLayout: LayoutConfig = {
-  version: 2,
+  version: 4,
   active_workspace: 'focus',
   widgets: [
     { id: 'widget-kpis', type: 'kpi_strip', title: 'Key Performance Indicators', x: 0, y: 0, w: 12, h: 1, visible: true, workspace: 'focus' },
-    { id: 'widget-schedule', type: 'schedule', title: 'Schedule & Agenda', x: 0, y: 1, w: 4, h: 1, visible: true, workspace: 'focus' },
-    { id: 'widget-scratchpad', type: 'scratchpad', title: 'Daily Scratchpad', x: 4, y: 1, w: 4, h: 1, visible: true, workspace: 'focus' },
-    { id: 'widget-tasks', type: 'tasks', title: "Today's Tasks", x: 8, y: 1, w: 4, h: 1, visible: true, workspace: 'focus' },
-    { id: 'widget-projects', type: 'projects', title: 'Active Projects', x: 4, y: 2, w: 4, h: 1, visible: false, workspace: 'full' },
-    { id: 'widget-time-allocation', type: 'time_allocation', title: 'Time Allocation', x: 0, y: 3, w: 4, h: 1, visible: false, workspace: 'analytics' },
-    { id: 'widget-habit-matrix', type: 'habit_matrix', title: 'Habit & Streak Grid', x: 4, y: 3, w: 5, h: 1, visible: false, workspace: 'analytics' },
-    { id: 'widget-quick-notes', type: 'quick_notes', title: 'Quick Notes', x: 9, y: 3, w: 3, h: 1, visible: false, workspace: 'full' },
+    { id: 'widget-schedule', type: 'schedule', title: 'Schedule & Agenda', x: 0, y: 1, w: 4, h: 5, visible: true, workspace: 'focus' },
+    { id: 'widget-scratchpad', type: 'scratchpad', title: 'Daily Scratchpad', x: 4, y: 1, w: 4, h: 5, visible: true, workspace: 'focus' },
+    { id: 'widget-tasks', type: 'tasks', title: "Today's Tasks", x: 8, y: 1, w: 4, h: 5, visible: true, workspace: 'focus' },
+    { id: 'widget-projects', type: 'projects', title: 'Active Projects', x: 0, y: 6, w: 4, h: 3, visible: false, workspace: 'full' },
+    { id: 'widget-time-allocation', type: 'time_allocation', title: 'Time Allocation', x: 4, y: 6, w: 4, h: 3, visible: false, workspace: 'analytics' },
+    { id: 'widget-habit-matrix', type: 'habit_matrix', title: 'Habit & Streak Grid', x: 8, y: 6, w: 4, h: 3, visible: false, workspace: 'analytics' },
+    { id: 'widget-quick-notes', type: 'quick_notes', title: 'Quick Notes', x: 0, y: 9, w: 4, h: 3, visible: false, workspace: 'full' },
   ],
 };
 
@@ -133,6 +133,10 @@ export const api = {
   getScheduleBlocks: async (date: string): Promise<ScheduleBlock[]> => {
     if (isTauri()) return await invoke<ScheduleBlock[]>('get_schedule_blocks', { date });
     return memorySchedule.filter((b) => b.date === date);
+  },
+  getScheduleBlocksRange: async (startDate: string, endDate: string): Promise<ScheduleBlock[]> => {
+    if (isTauri()) return await invoke<ScheduleBlock[]>('get_schedule_blocks_range', { startDate, endDate });
+    return memorySchedule.filter((b) => b.date >= startDate && b.date <= endDate);
   },
   createScheduleBlock: async (input: CreateScheduleBlockInput): Promise<ScheduleBlock> => {
     if (isTauri()) return await invoke<ScheduleBlock>('create_schedule_block', { input });

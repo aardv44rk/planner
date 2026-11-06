@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
@@ -6,7 +7,7 @@ fn default_true() -> bool {
 }
 
 fn default_workspace() -> String {
-    "focus".to_string()
+    "home".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -97,6 +98,8 @@ pub struct LayoutConfig {
     #[serde(default = "default_workspace")]
     pub active_workspace: String,
     pub widgets: Vec<WidgetConfig>,
+    #[serde(default)]
+    pub workspaces: Option<HashMap<String, Vec<WidgetConfig>>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

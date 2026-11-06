@@ -10,6 +10,9 @@ import {
   CheckSquare,
   Clock,
   ArrowRight,
+  LayoutGrid,
+  FileText,
+  Sparkles,
 } from 'lucide-react';
 import { useCommandCenterStore } from '../stores/commandCenterStore';
 import { useThemeStore } from '../stores/themeStore';
@@ -34,7 +37,7 @@ export const CommandPalette: React.FC = () => {
   } = useCommandCenterStore();
 
   const { theme, toggleTheme } = useThemeStore();
-  const { toggleEditMode, resetLayout } = useLayoutStore();
+  const { toggleEditMode, resetLayout, setActiveTab } = useLayoutStore();
 
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -87,6 +90,61 @@ export const CommandPalette: React.FC = () => {
   const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 
   const commands: CommandItem[] = [
+    {
+      id: 'nav-home',
+      title: 'Go to Home Dashboard',
+      category: 'Navigation',
+      icon: LayoutGrid,
+      shortcut: '1',
+      action: () => {
+        setActiveTab('home');
+        setCommandPaletteOpen(false);
+      },
+    },
+    {
+      id: 'nav-tasks',
+      title: 'Go to Tasks & Projects',
+      category: 'Navigation',
+      icon: CheckSquare,
+      shortcut: '2',
+      action: () => {
+        setActiveTab('tasks');
+        setCommandPaletteOpen(false);
+      },
+    },
+    {
+      id: 'nav-schedule',
+      title: 'Go to Calendar & Schedule',
+      category: 'Navigation',
+      icon: Clock,
+      shortcut: '3',
+      action: () => {
+        setActiveTab('schedule');
+        setCommandPaletteOpen(false);
+      },
+    },
+    {
+      id: 'nav-notes',
+      title: 'Go to Notes & Vault',
+      category: 'Navigation',
+      icon: FileText,
+      shortcut: '4',
+      action: () => {
+        setActiveTab('notes');
+        setCommandPaletteOpen(false);
+      },
+    },
+    {
+      id: 'nav-habits',
+      title: 'Go to Habits & Metrics',
+      category: 'Navigation',
+      icon: Sparkles,
+      shortcut: '5',
+      action: () => {
+        setActiveTab('habits');
+        setCommandPaletteOpen(false);
+      },
+    },
     {
       id: 'create-task',
       title: 'Create new task...',

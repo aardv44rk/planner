@@ -10,8 +10,8 @@ interface SparklineProps {
 const Sparkline: React.FC<SparklineProps> = ({ data, strokeColor = 'var(--accent)' }) => {
   if (!data || data.length < 2) return null;
 
-  const width = 72;
-  const height = 22;
+  const width = 64;
+  const height = 20;
   const min = Math.min(...data);
   const max = Math.max(...data);
   const range = max - min || 1;
@@ -19,13 +19,13 @@ const Sparkline: React.FC<SparklineProps> = ({ data, strokeColor = 'var(--accent
   const points = data
     .map((val, idx) => {
       const x = (idx / (data.length - 1)) * (width - 4) + 2;
-      const y = height - ((val - min) / range) * (height - 8) - 4;
+      const y = height - ((val - min) / range) * (height - 6) - 3;
       return `${x},${y}`;
     })
     .join(' ');
 
   return (
-    <svg width={width} height={height} className="overflow-visible">
+    <svg width={width} height={height} className="overflow-visible flex-shrink-0">
       <polyline
         fill="none"
         stroke={strokeColor}
@@ -88,13 +88,13 @@ export const MetricStrip: React.FC = () => {
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 w-full h-full select-none">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full h-[100px] max-h-[100px] select-none">
       {cards.map((card, i) => {
         const Icon = card.icon;
         return (
           <div
             key={i}
-            className="flex items-center justify-between px-3 py-2 rounded bg-surface border border-subtle hover:border-tx-muted/30 transition-colors h-full overflow-hidden"
+            className="flex items-center justify-between px-3 py-2 rounded bg-surface border border-subtle hover:border-tx-muted/30 transition-colors h-[100px] max-h-[100px] overflow-hidden"
           >
             <div className="flex flex-col justify-center min-w-0 pr-2">
               <div className="flex items-center space-x-1.5 text-tx-muted mb-0.5">

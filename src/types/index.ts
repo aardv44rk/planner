@@ -8,7 +8,9 @@ export type WidgetType =
   | 'habit_matrix'
   | 'quick_notes';
 
-export type WorkspaceType = 'focus' | 'full' | 'analytics';
+export type AppTab = 'home' | 'tasks' | 'schedule' | 'notes' | 'habits';
+
+export type WorkspaceType = 'home' | 'focus' | 'full' | 'analytics' | 'dashboard';
 
 export interface WidgetConfig {
   id: string;
@@ -26,6 +28,7 @@ export interface LayoutConfig {
   version: number;
   active_workspace?: string;
   widgets: WidgetConfig[];
+  workspaces?: Record<string, WidgetConfig[]>;
 }
 
 export type TaskStatus = 'todo' | 'in_progress' | 'done';

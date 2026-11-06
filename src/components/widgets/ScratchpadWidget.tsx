@@ -74,7 +74,7 @@ export const ScratchpadWidget: React.FC = () => {
           value={content}
           onChange={handleChange}
           placeholder="Jot down quick thoughts, markdown notes, code snippets, or daily plans..."
-          className="w-full h-full p-2 rounded bg-canvas border border-subtle/70 resize-none overflow-hidden text-[11px] font-mono text-tx-primary leading-relaxed placeholder:text-tx-muted/40 focus:outline-none focus:border-accent"
+          className="w-full h-full p-2 rounded bg-canvas border border-subtle/70 resize-none overflow-y-auto custom-scrollbar text-[11px] font-mono text-tx-primary leading-relaxed placeholder:text-tx-muted/40 focus:outline-none focus:border-accent"
           spellCheck={false}
         />
       </div>

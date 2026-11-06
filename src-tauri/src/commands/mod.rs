@@ -78,6 +78,17 @@ pub async fn get_schedule_blocks(
 }
 
 #[tauri::command]
+pub async fn get_schedule_blocks_range(
+    state: State<'_, Arc<AppState>>,
+    start_date: String,
+    end_date: String,
+) -> Result<Vec<ScheduleBlock>, String> {
+    db::get_schedule_blocks_range(&state.db, &start_date, &end_date)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn create_schedule_block(
     state: State<'_, Arc<AppState>>,
     input: CreateScheduleBlockInput,

@@ -19,7 +19,7 @@ export const TimeAllocationWidget: React.FC = () => {
         <span className="text-[9px] text-tx-muted font-mono">Today</span>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-hidden divide-y divide-subtle/30 mt-1 pr-0.5">
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar divide-y divide-subtle/30 mt-1 pr-1">
         {timeAllocation.length === 0 ? (
           <div className="h-full flex items-center justify-center text-tx-muted text-xs">
             No activity tracked yet.

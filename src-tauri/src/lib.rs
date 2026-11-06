@@ -52,6 +52,7 @@ pub fn run() {
             commands::delete_task,
             // Schedule
             commands::get_schedule_blocks,
+            commands::get_schedule_blocks_range,
             commands::create_schedule_block,
             commands::delete_schedule_block,
             commands::import_ics,

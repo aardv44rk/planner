@@ -72,7 +72,7 @@ export const HabitMatrixWidget: React.FC = () => {
       )}
 
       {/* Habits List with clean dividers (no nested boxes) */}
-      <div className="flex-1 min-h-0 overflow-hidden mt-1 pr-0.5">
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar mt-1 pr-1">
         {/* Days Header */}
         <div className="flex items-center justify-between py-0.5 border-b border-subtle/40 text-[9px] text-tx-muted font-mono">
           <span className="flex-1">Daily Habit</span>
