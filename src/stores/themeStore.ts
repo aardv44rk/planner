@@ -76,6 +76,10 @@ const applyAllToDOM = (theme: Theme, preset: ThemePreset, scale: UiScale) => {
   }
 };
 
+export const applyTheme = (theme: Theme, preset: ThemePreset, scale: UiScale = 'default') => {
+  applyAllToDOM(theme, preset, scale);
+};
+
 export const useThemeStore = create<ThemeState>((set, get) => {
   const initialTheme = getInitialTheme();
   const initialPreset = getInitialPreset();

@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { useCommandCenterStore } from '../../stores/commandCenterStore';
 import { TaskPriority } from '../../types';
+import { DueChip } from '../DueChip';
+import { EmptyState } from '../ui';
 
 export const TasksWidget: React.FC = () => {
   const { tasks, toggleTask, deleteTask, createTask, selectedDate } = useCommandCenterStore();
@@ -142,9 +144,7 @@ export const TasksWidget: React.FC = () => {
       {/* Tasks List */}
       <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar divide-y divide-subtle/30 pr-1">
         {filteredTasks.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-tx-muted text-xs">
-            No tasks match the filter.
-          </div>
+          <EmptyState compact title="No tasks" description="No tasks match the active filter." />
         ) : (
           filteredTasks.map((task) => {
             const isDone = task.completed === 1;
@@ -175,6 +175,8 @@ export const TasksWidget: React.FC = () => {
                 </div>
 
                 <div className="flex items-center space-x-1.5 flex-shrink-0 ml-1">
+                  <DueChip dueDate={task.due_date} completed={task.completed} className="text-[9px] px-1 py-0.2" />
+
                   <span className="text-[9px] px-1 py-0 rounded bg-elevated/80 text-tx-muted font-mono hidden @sm:inline-block">
                     {task.project}
                   </span>

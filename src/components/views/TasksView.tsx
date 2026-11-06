@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { useCommandCenterStore } from '../../stores/commandCenterStore';
 import { TaskPriority } from '../../types';
+import { DueChip } from '../DueChip';
+import { EmptyState } from '../ui';
 
 export const TasksView: React.FC = () => {
   const {
@@ -351,9 +353,11 @@ export const TasksView: React.FC = () => {
           {/* Tasks List */}
           <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar mt-2 divide-y divide-subtle/30 pr-1">
             {sortedTasks.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-tx-muted text-xs p-8">
-                <CheckSquare className="w-8 h-8 mb-2 opacity-30" />
-                <span>No tasks matching the selected filters.</span>
+              <div className="h-full flex items-center justify-center p-8">
+                <EmptyState
+                  title="No tasks found"
+                  description="No tasks match the active filters or selected project."
+                />
               </div>
             ) : (
               sortedTasks.map((task) => {
@@ -392,7 +396,9 @@ export const TasksView: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="flex items-center space-x-2.5 flex-shrink-0">
+                    <div className="flex items-center space-x-2 flex-shrink-0">
+                      <DueChip dueDate={task.due_date} completed={task.completed} />
+
                       <span className="text-[10px] px-2 py-0.5 rounded bg-elevated text-tx-muted font-mono border border-subtle/50">
                         {task.project}
                       </span>

@@ -39,6 +39,8 @@ export interface Assignment {
   handout_name?: string;
   handoutName?: string;
   updated_at?: string;
+  instructions_html?: string | null;
+  instructionsHtml?: string | null;
 }
 
 export interface CredentialStatus {

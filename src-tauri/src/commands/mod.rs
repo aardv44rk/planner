@@ -2,6 +2,7 @@ use std::sync::Arc;
 use tauri::State;
 use crate::config::{default_layout, load_or_init_layout, save_layout_file};
 use crate::db;
+use crate::error::AppError;
 use crate::models::{
     ActivitySummary, CreateHabitInput, CreateScheduleBlockInput, CreateTaskInput,
     DailyNote, DashboardMetrics, Habit, HabitDay, LayoutConfig, ScheduleBlock,
@@ -11,61 +12,61 @@ use crate::AppState;
 
 // Layout commands
 #[tauri::command]
-pub async fn get_layout(state: State<'_, Arc<AppState>>) -> Result<LayoutConfig, String> {
-    load_or_init_layout(&state.config_dir).map_err(|e| e.to_string())
+pub async fn get_layout(state: State<'_, Arc<AppState>>) -> Result<LayoutConfig, AppError> {
+    load_or_init_layout(&state.config_dir).map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn save_layout(
     state: State<'_, Arc<AppState>>,
     layout: LayoutConfig,
-) -> Result<(), String> {
-    save_layout_file(&state.config_dir, &layout).map_err(|e| e.to_string())
+) -> Result<(), AppError> {
+    save_layout_file(&state.config_dir, &layout).map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn reset_layout(state: State<'_, Arc<AppState>>) -> Result<LayoutConfig, String> {
+pub async fn reset_layout(state: State<'_, Arc<AppState>>) -> Result<LayoutConfig, AppError> {
     let def = default_layout();
-    save_layout_file(&state.config_dir, &def).map_err(|e| e.to_string())?;
+    save_layout_file(&state.config_dir, &def).map_err(AppError::from)?;
     Ok(def)
 }
 
 // Tasks commands
 #[tauri::command]
-pub async fn get_tasks(state: State<'_, Arc<AppState>>) -> Result<Vec<Task>, String> {
-    db::get_all_tasks(&state.db).await.map_err(|e| e.to_string())
+pub async fn get_tasks(state: State<'_, Arc<AppState>>) -> Result<Vec<Task>, AppError> {
+    db::get_all_tasks(&state.db).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn create_task(
     state: State<'_, Arc<AppState>>,
     input: CreateTaskInput,
-) -> Result<Task, String> {
-    db::create_task(&state.db, input).await.map_err(|e| e.to_string())
+) -> Result<Task, AppError> {
+    db::create_task(&state.db, input).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn toggle_task(
     state: State<'_, Arc<AppState>>,
     id: String,
-) -> Result<Task, String> {
-    db::toggle_task_completed(&state.db, &id).await.map_err(|e| e.to_string())
+) -> Result<Task, AppError> {
+    db::toggle_task_completed(&state.db, &id).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn update_task(
     state: State<'_, Arc<AppState>>,
     input: UpdateTaskInput,
-) -> Result<Task, String> {
-    db::update_task(&state.db, input).await.map_err(|e| e.to_string())
+) -> Result<Task, AppError> {
+    db::update_task(&state.db, input).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn delete_task(
     state: State<'_, Arc<AppState>>,
     id: String,
-) -> Result<(), String> {
-    db::delete_task(&state.db, &id).await.map_err(|e| e.to_string())
+) -> Result<(), AppError> {
+    db::delete_task(&state.db, &id).await.map_err(AppError::from)
 }
 
 // Schedule commands
@@ -73,8 +74,8 @@ pub async fn delete_task(
 pub async fn get_schedule_blocks(
     state: State<'_, Arc<AppState>>,
     date: String,
-) -> Result<Vec<ScheduleBlock>, String> {
-    db::get_schedule_blocks(&state.db, &date).await.map_err(|e| e.to_string())
+) -> Result<Vec<ScheduleBlock>, AppError> {
+    db::get_schedule_blocks(&state.db, &date).await.map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -82,26 +83,26 @@ pub async fn get_schedule_blocks_range(
     state: State<'_, Arc<AppState>>,
     start_date: String,
     end_date: String,
-) -> Result<Vec<ScheduleBlock>, String> {
+) -> Result<Vec<ScheduleBlock>, AppError> {
     db::get_schedule_blocks_range(&state.db, &start_date, &end_date)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn create_schedule_block(
     state: State<'_, Arc<AppState>>,
     input: CreateScheduleBlockInput,
-) -> Result<ScheduleBlock, String> {
-    db::create_schedule_block(&state.db, input).await.map_err(|e| e.to_string())
+) -> Result<ScheduleBlock, AppError> {
+    db::create_schedule_block(&state.db, input).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn delete_schedule_block(
     state: State<'_, Arc<AppState>>,
     id: String,
-) -> Result<(), String> {
-    db::delete_schedule_block(&state.db, &id).await.map_err(|e| e.to_string())
+) -> Result<(), AppError> {
+    db::delete_schedule_block(&state.db, &id).await.map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -109,7 +110,7 @@ pub async fn import_ics(
     state: State<'_, Arc<AppState>>,
     ics_content: String,
     target_date: Option<String>,
-) -> Result<usize, String> {
+) -> Result<usize, AppError> {
     let parsed_blocks = parse_ics_string(&ics_content, target_date.as_deref());
     let count = parsed_blocks.len();
     for block in parsed_blocks {
@@ -123,8 +124,8 @@ pub async fn import_ics(
 pub async fn get_daily_note(
     state: State<'_, Arc<AppState>>,
     date: String,
-) -> Result<DailyNote, String> {
-    db::get_daily_note(&state.db, &date).await.map_err(|e| e.to_string())
+) -> Result<DailyNote, AppError> {
+    db::get_daily_note(&state.db, &date).await.map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -132,15 +133,15 @@ pub async fn save_daily_note(
     state: State<'_, Arc<AppState>>,
     date: String,
     content_md: String,
-) -> Result<DailyNote, String> {
-    db::save_daily_note(&state.db, &date, &content_md).await.map_err(|e| e.to_string())
+) -> Result<DailyNote, AppError> {
+    db::save_daily_note(&state.db, &date, &content_md).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn get_daily_notes_dates(
     state: State<'_, Arc<AppState>>,
-) -> Result<Vec<String>, String> {
-    db::get_daily_notes_dates(&state.db).await.map_err(|e| e.to_string())
+) -> Result<Vec<String>, AppError> {
+    db::get_daily_notes_dates(&state.db).await.map_err(AppError::from)
 }
 
 // Analytics and Metrics
@@ -148,24 +149,24 @@ pub async fn get_daily_notes_dates(
 pub async fn get_dashboard_metrics(
     state: State<'_, Arc<AppState>>,
     date: String,
-) -> Result<DashboardMetrics, String> {
-    db::get_dashboard_metrics(&state.db, &date).await.map_err(|e| e.to_string())
+) -> Result<DashboardMetrics, AppError> {
+    db::get_dashboard_metrics(&state.db, &date).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn get_time_allocation(
     state: State<'_, Arc<AppState>>,
     date: String,
-) -> Result<Vec<TimeAllocationItem>, String> {
-    db::get_time_allocation(&state.db, &date).await.map_err(|e| e.to_string())
+) -> Result<Vec<TimeAllocationItem>, AppError> {
+    db::get_time_allocation(&state.db, &date).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn get_activity_summary(
     state: State<'_, Arc<AppState>>,
     date: String,
-) -> Result<ActivitySummary, String> {
-    db::get_activity_summary(&state.db, &date).await.map_err(|e| e.to_string())
+) -> Result<ActivitySummary, AppError> {
+    db::get_activity_summary(&state.db, &date).await.map_err(AppError::from)
 }
 
 // Habits commands (real SQLite persistence)
@@ -173,16 +174,16 @@ pub async fn get_activity_summary(
 pub async fn get_habits(
     state: State<'_, Arc<AppState>>,
     start_date: String,
-) -> Result<Vec<HabitDay>, String> {
-    db::get_habits_with_days(&state.db, &start_date).await.map_err(|e| e.to_string())
+) -> Result<Vec<HabitDay>, AppError> {
+    db::get_habits_with_days(&state.db, &start_date).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn get_habit_matrix(
     state: State<'_, Arc<AppState>>,
     start_date: String,
-) -> Result<Vec<HabitDay>, String> {
-    db::get_habits_with_days(&state.db, &start_date).await.map_err(|e| e.to_string())
+) -> Result<Vec<HabitDay>, AppError> {
+    db::get_habits_with_days(&state.db, &start_date).await.map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -190,16 +191,16 @@ pub async fn toggle_habit_day(
     state: State<'_, Arc<AppState>>,
     habit_id: String,
     date: String,
-) -> Result<bool, String> {
-    db::toggle_habit_day(&state.db, &habit_id, &date).await.map_err(|e| e.to_string())
+) -> Result<bool, AppError> {
+    db::toggle_habit_day(&state.db, &habit_id, &date).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn create_habit(
     state: State<'_, Arc<AppState>>,
     input: CreateHabitInput,
-) -> Result<Habit, String> {
-    db::create_habit(&state.db, &input.name).await.map_err(|e| e.to_string())
+) -> Result<Habit, AppError> {
+    db::create_habit(&state.db, &input.name).await.map_err(AppError::from)
 }
 
 // Robust .ics parser
@@ -208,58 +209,73 @@ fn parse_ics_string(content: &str, default_date: Option<&str>) -> Vec<CreateSche
     let mut current_summary: Option<String> = None;
     let mut current_dtstart: Option<String> = None;
     let mut current_dtend: Option<String> = None;
-    let mut current_category: Option<String> = None;
-    let mut in_vevent = false;
 
-    let mut unfolded_lines: Vec<String> = Vec::new();
-    for line in content.lines() {
-        if line.starts_with(' ') || line.starts_with('\t') {
-            if let Some(last) = unfolded_lines.last_mut() {
-                last.push_str(line.trim_start());
-            }
-        } else {
-            unfolded_lines.push(line.trim().to_string());
-        }
-    }
+    let reader = std::io::BufReader::new(content.as_bytes());
+    let parser = ical::IcalParser::new(reader);
 
-    for line in unfolded_lines {
-        if line.starts_with("BEGIN:VEVENT") {
-            in_vevent = true;
-            current_summary = None;
-            current_dtstart = None;
-            current_dtend = None;
-            current_category = None;
-        } else if line.starts_with("END:VEVENT") {
-            if in_vevent {
-                if let (Some(summary), Some(start)) = (current_summary.take(), current_dtstart.take()) {
-                    let end = current_dtend.take().unwrap_or_else(|| {
-                        let (h, m) = parse_time_hh_mm(&start);
-                        format!("{:02}:{:02}", (h + 1) % 24, m)
-                    });
-                    let date = parse_date_yyyy_mm_dd(&start)
-                        .or_else(|| default_date.map(|s| s.to_string()))
-                        .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
-                    let start_time = parse_time_hh_mm_str(&start);
+    for line in parser {
+        if let Ok(calendar) = line {
+            for event in calendar.events {
+                for prop in event.properties {
+                    match prop.name.as_str() {
+                        "SUMMARY" => current_summary = prop.value,
+                        "DTSTART" => current_dtstart = prop.value,
+                        "DTEND" => current_dtend = prop.value,
+                        _ => {}
+                    }
+                }
+
+                if let Some(summary) = current_summary.take() {
+                    let (date, start_time, end_time) = parse_ics_timestamps(
+                        current_dtstart.as_deref(),
+                        current_dtend.as_deref(),
+                        default_date,
+                    );
 
                     blocks.push(CreateScheduleBlockInput {
                         title: summary,
                         start_time,
-                        end_time: end,
-                        category: current_category.take().or_else(|| Some("Calendar".to_string())),
+                        end_time,
+                        category: Some("Imported".to_string()),
                         date,
                     });
                 }
             }
-            in_vevent = false;
-        } else if in_vevent {
-            if let Some(val) = extract_prop(&line, "SUMMARY") {
-                current_summary = Some(val);
-            } else if let Some(val) = extract_prop(&line, "DTSTART") {
-                current_dtstart = Some(val);
-            } else if let Some(val) = extract_prop(&line, "DTEND") {
-                current_dtend = Some(parse_time_hh_mm_str(&val));
-            } else if let Some(val) = extract_prop(&line, "CATEGORIES") {
-                current_category = Some(val);
+        }
+    }
+
+    if blocks.is_empty() {
+        for line in content.lines() {
+            let line = line.trim();
+            if let Some(val) = line.strip_prefix("SUMMARY:") {
+                current_summary = Some(val.to_string());
+            } else if let Some(val) = line.strip_prefix("DTSTART:") {
+                current_dtstart = Some(val.to_string());
+            } else if let Some(val) = line.strip_prefix("DTSTART;") {
+                if let Some((_, time_part)) = val.split_once(':') {
+                    current_dtstart = Some(time_part.to_string());
+                }
+            } else if let Some(val) = line.strip_prefix("DTEND:") {
+                current_dtend = Some(val.to_string());
+            } else if let Some(val) = line.strip_prefix("DTEND;") {
+                if let Some((_, time_part)) = val.split_once(':') {
+                    current_dtend = Some(time_part.to_string());
+                }
+            } else if line == "END:VEVENT" {
+                if let Some(summary) = current_summary.take() {
+                    let (date, start_time, end_time) = parse_ics_timestamps(
+                        current_dtstart.as_deref(),
+                        current_dtend.as_deref(),
+                        default_date,
+                    );
+                    blocks.push(CreateScheduleBlockInput {
+                        title: summary,
+                        start_time,
+                        end_time,
+                        category: Some("Imported".to_string()),
+                        date,
+                    });
+                }
             }
         }
     }
@@ -267,44 +283,53 @@ fn parse_ics_string(content: &str, default_date: Option<&str>) -> Vec<CreateSche
     blocks
 }
 
-fn extract_prop(line: &str, prop_name: &str) -> Option<String> {
-    if line.starts_with(prop_name) {
-        if let Some(colon_idx) = line.find(':') {
-            return Some(line[colon_idx + 1..].trim().to_string());
+fn parse_ics_timestamps(
+    dtstart: Option<&str>,
+    dtend: Option<&str>,
+    default_date: Option<&str>,
+) -> (String, String, String) {
+    let now = chrono::Local::now();
+    let def_d = default_date
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| now.format("%Y-%m-%d").to_string());
+
+    let (date_str, start_time) = if let Some(start) = dtstart {
+        if start.len() >= 8 {
+            let d = format!("{}-{}-{}", &start[0..4], &start[4..6], &start[6..8]);
+            let t = if start.len() >= 13 && start.contains('T') {
+                let t_part = start.split('T').nth(1).unwrap_or("090000");
+                if t_part.len() >= 4 {
+                    format!("{}:{}", &t_part[0..2], &t_part[2..4])
+                } else {
+                    "09:00".to_string()
+                }
+            } else {
+                "09:00".to_string()
+            };
+            (d, t)
+        } else {
+            (def_d.clone(), "09:00".to_string())
         }
-    }
-    None
-}
+    } else {
+        (def_d.clone(), "09:00".to_string())
+    };
 
-fn parse_date_yyyy_mm_dd(dt: &str) -> Option<String> {
-    let clean = dt.replace('-', "");
-    if clean.len() >= 8 {
-        let y = &clean[0..4];
-        let m = &clean[4..6];
-        let d = &clean[6..8];
-        return Some(format!("{}-{}-{}", y, m, d));
-    }
-    None
-}
-
-fn parse_time_hh_mm_str(dt: &str) -> String {
-    if let Some(t_pos) = dt.find('T') {
-        let t_part = &dt[t_pos + 1..];
-        if t_part.len() >= 4 {
-            let h = &t_part[0..2];
-            let m = &t_part[2..4];
-            return format!("{}:{}", h, m);
+    let end_time = if let Some(end) = dtend {
+        if end.len() >= 13 && end.contains('T') {
+            let t_part = end.split('T').nth(1).unwrap_or("10:30");
+            if t_part.len() >= 4 {
+                format!("{}:{}", &t_part[0..2], &t_part[2..4])
+            } else {
+                "10:30".to_string()
+            }
+        } else {
+            "10:30".to_string()
         }
-    }
-    "09:00".to_string()
-}
+    } else {
+        "10:30".to_string()
+    };
 
-fn parse_time_hh_mm(dt: &str) -> (u32, u32) {
-    let s = parse_time_hh_mm_str(dt);
-    let mut parts = s.split(':');
-    let h = parts.next().and_then(|v| v.parse().ok()).unwrap_or(9);
-    let m = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
-    (h, m)
+    (date_str, start_time, end_time)
 }
 
 // ==========================================
@@ -338,14 +363,14 @@ pub async fn save_credentials(
     password: String,
     totp_seed: String,
     matrix_card: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     crate::auth::store_credentials(
         &username,
         &password,
         &totp_seed,
         matrix_card.as_deref(),
     )
-    .map_err(|e| e.to_string())
+    .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -353,9 +378,9 @@ pub async fn save_science_credentials(
     username: String,
     password: String,
     totp_seed: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     crate::auth::store_science_credentials(&username, &password, &totp_seed)
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -363,29 +388,29 @@ pub async fn save_titech_credentials(
     username: String,
     password: String,
     matrix_card: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     crate::auth::store_titech_credentials(&username, &password, &matrix_card)
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn clear_science_credentials() -> Result<(), String> {
-    crate::auth::clear_science_credentials().map_err(|e| e.to_string())
+pub async fn clear_science_credentials() -> Result<(), AppError> {
+    crate::auth::clear_science_credentials().map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn clear_titech_credentials() -> Result<(), String> {
-    crate::auth::clear_titech_credentials().map_err(|e| e.to_string())
+pub async fn clear_titech_credentials() -> Result<(), AppError> {
+    crate::auth::clear_titech_credentials().map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn save_matrix_card(matrix: String) -> Result<(), String> {
-    crate::auth::store_matrix_card(&matrix).map_err(|e| e.to_string())
+pub async fn save_matrix_card(matrix: String) -> Result<(), AppError> {
+    crate::auth::store_matrix_card(&matrix).map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn get_credential_status(state: State<'_, Arc<AppState>>) -> Result<CredentialStatus, String> {
-    let creds = crate::auth::retrieve_credentials().map_err(|e| e.to_string())?;
+pub async fn get_credential_status(state: State<'_, Arc<AppState>>) -> Result<CredentialStatus, AppError> {
+    let creds = crate::auth::retrieve_credentials().map_err(AppError::from)?;
     let sci_creds = crate::auth::retrieve_science_credentials().unwrap_or(None);
     let ti_creds = crate::auth::retrieve_titech_credentials().unwrap_or(None);
     let totp_seed = crate::auth::retrieve_totp_seed().unwrap_or(None);
@@ -434,14 +459,14 @@ pub async fn get_credential_status(state: State<'_, Arc<AppState>>) -> Result<Cr
 }
 
 #[tauri::command]
-pub async fn open_url(url: String) -> Result<(), String> {
+pub async fn open_url(url: String) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
         use std::process::Command;
         let _ = Command::new("cmd")
             .args(["/C", "start", "", &url])
             .spawn()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| AppError::Io(e.to_string()))?;
     }
     #[cfg(target_os = "macos")]
     {
@@ -449,7 +474,7 @@ pub async fn open_url(url: String) -> Result<(), String> {
         let _ = Command::new("open")
             .arg(&url)
             .spawn()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| AppError::Io(e.to_string()))?;
     }
     #[cfg(target_os = "linux")]
     {
@@ -457,37 +482,37 @@ pub async fn open_url(url: String) -> Result<(), String> {
         let _ = Command::new("xdg-open")
             .arg(&url)
             .spawn()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| AppError::Io(e.to_string()))?;
     }
     Ok(())
 }
 
 #[tauri::command]
-pub async fn clear_credentials(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub async fn clear_credentials(state: State<'_, Arc<AppState>>) -> Result<(), AppError> {
     let _ = crate::lms::clear_session(&state.config_dir);
-    crate::auth::delete_credentials().map_err(|e| e.to_string())
+    crate::auth::delete_credentials().map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn sync_lms(state: State<'_, Arc<AppState>>) -> Result<String, String> {
+pub async fn sync_lms(state: State<'_, Arc<AppState>>) -> Result<String, AppError> {
     crate::lms::sync_courses_and_tasks(&state.config_dir, &state.db)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn get_lms_sync_state(state: State<'_, Arc<AppState>>) -> Result<crate::models::LmsSyncState, String> {
+pub async fn get_lms_sync_state(state: State<'_, Arc<AppState>>) -> Result<crate::models::LmsSyncState, AppError> {
     let active_year = db::get_sync_meta(&state.db, "active_academic_year")
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(AppError::from)?
         .unwrap_or_default();
     let active_quarter = db::get_sync_meta(&state.db, "active_quarter")
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(AppError::from)?
         .unwrap_or_default();
     let last_synced_at = db::get_sync_meta(&state.db, "last_synced_at")
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
 
     Ok(crate::models::LmsSyncState {
         active_academic_year: active_year,
@@ -497,16 +522,16 @@ pub async fn get_lms_sync_state(state: State<'_, Arc<AppState>>) -> Result<crate
 }
 
 #[tauri::command]
-pub async fn login_titech(state: State<'_, Arc<AppState>>) -> Result<String, String> {
+pub async fn login_titech(state: State<'_, Arc<AppState>>) -> Result<String, AppError> {
     crate::lms::perform_titech_login(&state.config_dir)
         .await
         .map(|_| "Successfully signed in to Tokyo Tech portal".to_string())
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn get_courses(state: State<'_, Arc<AppState>>) -> Result<Vec<crate::models::Course>, String> {
-    db::get_courses(&state.db).await.map_err(|e| e.to_string())
+pub async fn get_courses(state: State<'_, Arc<AppState>>) -> Result<Vec<crate::models::Course>, AppError> {
+    db::get_courses(&state.db).await.map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -514,24 +539,24 @@ pub async fn upload_assignment(
     state: State<'_, Arc<AppState>>,
     file_path: String,
     assignment_id: String,
-) -> Result<crate::lms::UploadResult, String> {
+) -> Result<crate::lms::UploadResult, AppError> {
     crate::lms::upload_assignment(&state.config_dir, &file_path, &assignment_id, Some(&state.db))
         .await
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn pick_assignment_file() -> Result<crate::models::PickedFileResult, String> {
+pub async fn pick_assignment_file() -> Result<crate::models::PickedFileResult, AppError> {
     let file = rfd::AsyncFileDialog::new()
         .set_title("Select Assignment File to Submit")
         .pick_file()
         .await
-        .ok_or_else(|| "File selection was cancelled".to_string())?;
+        .ok_or_else(|| AppError::Internal("File selection was cancelled".to_string()))?;
 
     let path = file.path().to_string_lossy().to_string();
     let metadata = tokio::fs::metadata(&file.path())
         .await
-        .map_err(|e| format!("Failed to read file metadata: {}", e))?;
+        .map_err(|e| AppError::Io(format!("Failed to read file metadata: {}", e)))?;
     let name = file.file_name();
 
     Ok(crate::models::PickedFileResult {
@@ -545,59 +570,79 @@ pub async fn pick_assignment_file() -> Result<crate::models::PickedFileResult, S
 pub async fn pick_and_upload_assignment(
     state: State<'_, Arc<AppState>>,
     assignment_id: String,
-) -> Result<crate::lms::UploadResult, String> {
+) -> Result<crate::lms::UploadResult, AppError> {
     let file = rfd::AsyncFileDialog::new()
         .set_title("Select Assignment File to Submit")
         .pick_file()
         .await
-        .ok_or_else(|| "File selection was cancelled".to_string())?;
+        .ok_or_else(|| AppError::Internal("File selection was cancelled".to_string()))?;
 
     let file_path = file.path().to_string_lossy().to_string();
     crate::lms::upload_assignment(&state.config_dir, &file_path, &assignment_id, Some(&state.db))
         .await
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn get_current_totp() -> Result<crate::auth::TotpCodeResult, String> {
+pub async fn get_current_totp() -> Result<crate::auth::TotpCodeResult, AppError> {
     let seed = crate::auth::retrieve_totp_seed()
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "No TOTP seed is configured in the vault".to_string())?;
+        .map_err(AppError::from)?
+        .ok_or_else(|| AppError::Auth("No TOTP seed is configured in the vault".to_string()))?;
 
-    crate::auth::get_totp_code_info(&seed).map_err(|e| e.to_string())
+    crate::auth::get_totp_code_info(&seed).map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn verify_totp_seed(seed: String) -> Result<crate::auth::TotpCodeResult, String> {
-    crate::auth::get_totp_code_info(&seed).map_err(|e| e.to_string())
+pub async fn verify_totp_seed(seed: String) -> Result<crate::auth::TotpCodeResult, AppError> {
+    crate::auth::get_totp_code_info(&seed).map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn save_totp_seed(seed: String) -> Result<crate::auth::TotpCodeResult, String> {
-    let code_info = crate::auth::get_totp_code_info(&seed).map_err(|e| e.to_string())?;
-    crate::auth::store_totp_seed(&seed).map_err(|e| e.to_string())?;
+pub async fn save_totp_seed(seed: String) -> Result<crate::auth::TotpCodeResult, AppError> {
+    let code_info = crate::auth::get_totp_code_info(&seed).map_err(AppError::from)?;
+    crate::auth::store_totp_seed(&seed).map_err(AppError::from)?;
     Ok(code_info)
 }
 
 // Quick Notes Commands
 #[tauri::command]
-pub async fn get_quick_notes(state: State<'_, Arc<AppState>>) -> Result<Vec<crate::models::QuickNote>, String> {
-    db::get_all_quick_notes(&state.db).await.map_err(|e| e.to_string())
+pub async fn get_quick_notes(state: State<'_, Arc<AppState>>) -> Result<Vec<crate::models::QuickNote>, AppError> {
+    db::get_all_quick_notes(&state.db).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn create_quick_note(
     state: State<'_, Arc<AppState>>,
     content: String,
-) -> Result<crate::models::QuickNote, String> {
-    db::create_quick_note(&state.db, &content).await.map_err(|e| e.to_string())
+) -> Result<crate::models::QuickNote, AppError> {
+    db::create_quick_note(&state.db, &content).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn delete_quick_note(
     state: State<'_, Arc<AppState>>,
     id: String,
-) -> Result<(), String> {
-    db::delete_quick_note(&state.db, &id).await.map_err(|e| e.to_string())
+) -> Result<(), AppError> {
+    db::delete_quick_note(&state.db, &id).await.map_err(AppError::from)
 }
 
+// Campus Wi-Fi Commands
+#[tauri::command]
+pub async fn check_campus_wifi() -> Result<bool, AppError> {
+    crate::wifi::is_captive_portal_active().await
+}
+
+#[tauri::command]
+pub async fn login_campus_wifi() -> Result<String, AppError> {
+    crate::wifi::login_to_campus_wifi().await
+}
+
+// Notification Commands
+#[tauri::command]
+pub async fn trigger_test_notification(
+    app: tauri::AppHandle,
+    title: String,
+    body: String,
+) -> Result<(), AppError> {
+    crate::notifications::show_notification(&app, &title, &body).await
+}

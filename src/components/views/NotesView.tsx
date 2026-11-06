@@ -10,6 +10,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { useCommandCenterStore } from '../../stores/commandCenterStore';
+import { useDirtyGuard } from '../use-submission-guard';
 
 export const NotesView: React.FC = () => {
   const {
@@ -30,6 +31,8 @@ export const NotesView: React.FC = () => {
   // Quick notes pins state
   const [newPin, setNewPin] = useState('');
   const [isAddingPin, setIsAddingPin] = useState(false);
+
+  useDirtyGuard(saveStatus === 'saving');
 
   useEffect(() => {
     if (dailyNote) {

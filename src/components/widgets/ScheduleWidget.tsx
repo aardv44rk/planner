@@ -6,7 +6,6 @@ import {
   Upload,
   ChevronLeft,
   ChevronRight,
-  Calendar as CalendarIcon,
 } from 'lucide-react';
 import {
   startOfMonth,
@@ -53,7 +52,31 @@ export const ScheduleWidget: React.FC<ScheduleWidgetProps> = ({
     selectedAcademicYear,
   } = useCommandCenterStore();
 
-  const [viewMode, setViewMode] = useState<CalendarViewMode>(fullScreen ? 'timetable' : 'week');
+  const [viewMode, setViewMode] = useState<CalendarViewMode>(() => {
+    if (fullScreen) return 'timetable';
+    const saved = localStorage.getItem('lifeos-default-cal-view') as CalendarViewMode | null;
+    return saved && ['day', 'week', 'month', 'timetable'].includes(saved) ? saved : 'week';
+  });
+
+  useEffect(() => {
+    const handleViewChange = () => {
+      const saved = localStorage.getItem('lifeos-default-cal-view') as CalendarViewMode | null;
+      if (saved && ['day', 'week', 'month', 'timetable'].includes(saved)) {
+        setViewMode(saved);
+      }
+    };
+    window.addEventListener('calendar-view-changed', handleViewChange);
+    window.addEventListener('storage', handleViewChange);
+    return () => {
+      window.removeEventListener('calendar-view-changed', handleViewChange);
+      window.removeEventListener('storage', handleViewChange);
+    };
+  }, []);
+
+  const handleSelectViewMode = (mode: CalendarViewMode) => {
+    setViewMode(mode);
+    localStorage.setItem('lifeos-default-cal-view', mode);
+  };
   const [currentDate, setCurrentDate] = useState<Date>(() => {
     try {
       return parseISO(selectedDate);
@@ -314,7 +337,7 @@ export const ScheduleWidget: React.FC<ScheduleWidgetProps> = ({
             {(['day', 'week', 'month', 'timetable'] as const).map((mode) => (
               <button
                 key={mode}
-                onClick={() => setViewMode(mode)}
+                onClick={() => handleSelectViewMode(mode)}
                 className={`px-1.5 py-0.5 rounded capitalize transition-colors ${
                   viewMode === mode
                     ? 'bg-accent text-white font-semibold shadow-xs'
@@ -746,27 +769,29 @@ export const ScheduleWidget: React.FC<ScheduleWidgetProps> = ({
         </div>
       )}
 
-      {/* VIEW 2: WEEK VIEW (7-Day Strip Selector + Vertical Agenda) */}
+      {/* VIEW 2: GOOGLE CALENDAR-STYLE WEEK VIEW (7-Column 2D Time Grid 08:00 to 22:00) */}
       {viewMode === 'week' && (
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden pt-1">
-          {/* Week Day Strip Selector */}
-          <div className="flex-shrink-0 flex items-center justify-between py-1 border-b border-subtle/40">
-            <div className="grid grid-cols-7 gap-1 w-full">
+          {/* Header: Time label spacer + 7 Days of Week Header */}
+          <div className="flex-shrink-0 flex items-center border-b border-subtle/50 pb-1.5 pr-2">
+            <div className="w-10 shrink-0 text-center text-[9px] font-mono text-tx-muted uppercase select-none">
+              Time
+            </div>
+            <div className="flex-1 grid grid-cols-7 gap-1">
               {weekDays.map((d) => {
                 const dayStr = format(d, 'yyyy-MM-dd');
                 const isSelected = dayStr === selectedDate;
                 const isCurrent = isToday(d);
-                const hasBlocks = (monthBlocks[dayStr]?.length || 0) > 0;
-
                 return (
                   <button
                     key={dayStr}
+                    type="button"
                     onClick={() => handleDayClick(d)}
-                    className={`flex flex-col items-center justify-center py-1 rounded transition-colors text-xs relative border ${
+                    className={`flex flex-col items-center justify-center py-1 rounded transition-colors text-xs border ${
                       isSelected
                         ? 'bg-accent text-white font-medium border-accent shadow-xs'
                         : isCurrent
-                        ? 'bg-accent/10 text-accent font-semibold border-accent/40'
+                        ? 'bg-accent/15 text-accent font-semibold border-accent/40'
                         : 'text-tx-muted hover:bg-elevated hover:text-tx-primary border-transparent'
                     }`}
                   >
@@ -776,61 +801,149 @@ export const ScheduleWidget: React.FC<ScheduleWidgetProps> = ({
                     <span className="font-semibold text-[11px] leading-tight mt-0.5">
                       {format(d, 'd')}
                     </span>
-                    {hasBlocks && !isSelected && (
-                      <span className="w-1 h-1 rounded-full bg-accent mt-0.5" />
-                    )}
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {/* Agenda List */}
-          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar mt-1 divide-y divide-subtle/30 pr-1">
-            {scheduleBlocks.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-tx-muted text-xs text-center p-4">
-                <CalendarIcon className="w-5 h-5 mb-1 opacity-30" />
-                <span className="text-[11px]">No blocks scheduled for {format(currentDate, 'MMM d')}</span>
-                <button
-                  onClick={() => setIsAdding(true)}
-                  className="mt-1 text-[11px] text-accent hover:underline font-medium"
-                >
-                  + Add schedule block
-                </button>
-              </div>
-            ) : (
-              scheduleBlocks.map((block) => (
+          {/* 2D Scrollable Time Grid */}
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar relative pr-1">
+            <div
+              className="relative w-full flex"
+              style={{ height: `${totalTimelineHeight}px` }}
+            >
+              {/* Left Y-Axis Time Labels */}
+              <div className="w-10 shrink-0 relative border-r border-subtle/30">
+                {timelineHours.slice(0, -1).map((hour, idx) => {
+                  const hourStr = `${hour.toString().padStart(2, '0')}:00`;
+                  const topPos = idx * hourRowHeight;
+                  return (
+                    <div
+                      key={hour}
+                      style={{ top: `${topPos}px` }}
+                      className="absolute left-0 right-1 text-right text-[9px] font-mono text-tx-muted -mt-2 select-none"
+                    >
+                      {hourStr}
+                    </div>
+                  );
+                })}
                 <div
-                  key={block.id}
-                  className="group/item flex items-center justify-between py-1.5 px-1 hover:bg-elevated/40 rounded transition-colors"
+                  style={{ top: `${totalTimelineHeight}px` }}
+                  className="absolute left-0 right-1 text-right text-[9px] font-mono text-tx-muted -mt-2 select-none"
                 >
-                  <div className="flex items-center space-x-2.5 min-w-0">
-                    <div className="flex items-center space-x-1 text-[10px] font-mono text-accent w-20 flex-shrink-0">
-                      <span>{block.start_time}</span>
-                      <span className="text-tx-muted">-</span>
-                      <span>{block.end_time}</span>
-                    </div>
-                    <div className="w-[2px] h-3.5 bg-accent/60 rounded-full flex-shrink-0" />
-                    <div className="min-w-0 flex items-center space-x-2">
-                      <span className="text-[11px] font-medium text-tx-primary leading-tight truncate">
-                        {block.title}
-                      </span>
-                      <span className={`text-[8px] px-1 py-0.2 rounded font-mono flex-shrink-0 border ${getCategoryColor(block.category)}`}>
-                        {block.category}
-                      </span>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => deleteScheduleBlock(block.id)}
-                    className="opacity-0 group-hover/item:opacity-100 p-0.5 text-tx-muted hover:text-red-500 rounded transition-opacity flex-shrink-0"
-                    title="Delete block"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+                  22:00
                 </div>
-              ))
-            )}
+              </div>
+
+              {/* 7 Day Columns */}
+              <div className="flex-1 grid grid-cols-7 relative divide-x divide-subtle/20">
+                {weekDays.map((d) => {
+                  const dayStr = format(d, 'yyyy-MM-dd');
+                  const isCurrent = isToday(d);
+                  const dayBlocks = monthBlocks[dayStr] || [];
+
+                  return (
+                    <div
+                      key={dayStr}
+                      className="relative h-full hover:bg-elevated/10 transition-colors"
+                    >
+                      {/* Hour Grid Lines */}
+                      {timelineHours.slice(0, -1).map((hour, idx) => {
+                        const topPos = idx * hourRowHeight;
+                        return (
+                          <div
+                            key={hour}
+                            style={{ top: `${topPos}px`, height: `${hourRowHeight}px` }}
+                            onClick={() => {
+                              setSelectedDate(dayStr);
+                              setCurrentDate(d);
+                              handleHourSlotClick(hour);
+                            }}
+                            className="absolute left-0 right-0 border-t border-subtle/25 hover:bg-accent/5 transition-colors cursor-pointer"
+                          />
+                        );
+                      })}
+
+                      {/* Current Time Horizontal Line for Today */}
+                      {isCurrent && nowMinutes >= timelineStartMinutes && nowMinutes <= timelineEndMinutes && (
+                        <div
+                          style={{ top: `${currentNowTopPx}px` }}
+                          className="absolute left-0 right-0 z-30 flex items-center pointer-events-none"
+                        >
+                          <div className="w-1.5 h-1.5 rounded-full bg-accent ring-1 ring-accent/30 -ml-0.5" />
+                          <div className="flex-1 h-[1.5px] bg-accent shadow-xs" />
+                        </div>
+                      )}
+
+                      {/* Schedule Blocks for this Day */}
+                      {dayBlocks.map((block) => {
+                        const startMins = parseTimeToMinutes(block.start_time);
+                        const endMins = parseTimeToMinutes(block.end_time);
+
+                        const clampedStart = Math.max(timelineStartMinutes, Math.min(timelineEndMinutes, startMins));
+                        const clampedEnd = Math.max(clampedStart + 15, Math.min(timelineEndMinutes, endMins));
+
+                        const topPx =
+                          ((clampedStart - timelineStartMinutes) / (timelineEndMinutes - timelineStartMinutes)) *
+                          totalTimelineHeight;
+                        const heightPx = Math.max(
+                          20,
+                          ((clampedEnd - clampedStart) / (timelineEndMinutes - timelineStartMinutes)) *
+                            totalTimelineHeight - 2
+                        );
+
+                        return (
+                          <div
+                            key={block.id}
+                            style={{
+                              top: `${topPx}px`,
+                              height: `${heightPx}px`,
+                              left: '2px',
+                              right: '2px',
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedDate(dayStr);
+                              setCurrentDate(d);
+                            }}
+                            className={`absolute z-20 group/block p-1 rounded border shadow-xs flex flex-col justify-between overflow-hidden transition-all hover:ring-1 hover:ring-accent/60 ${getCategoryColor(
+                              block.category
+                            )}`}
+                          >
+                            <div className="flex flex-col min-w-0">
+                              <span className="font-mono text-[8px] font-bold leading-none truncate">
+                                {block.start_time}
+                              </span>
+                              <span className="text-[10px] font-semibold leading-tight truncate mt-0.5">
+                                {block.title}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between mt-auto">
+                              <span className="text-[7px] px-0.5 rounded font-mono border border-current/20 opacity-80 truncate">
+                                {block.category}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteScheduleBlock(block.id);
+                                }}
+                                className="opacity-0 group-hover/block:opacity-100 p-0.5 text-tx-muted hover:text-red-500 rounded transition-opacity"
+                                title="Delete block"
+                              >
+                                <Trash2 className="w-2.5 h-2.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       )}

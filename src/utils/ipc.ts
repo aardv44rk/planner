@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../app/traced-tauri-core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import {
   ActivitySummary,
@@ -408,6 +408,24 @@ export const api = {
       filename: filePath.split(/[\\/]/).pop() || 'submission.pdf',
     };
   },
+  checkCampusWifi: async (): Promise<boolean> => {
+    if (isTauri()) {
+      return await invoke<boolean>('check_campus_wifi');
+    }
+    return false;
+  },
+  loginCampusWifi: async (): Promise<string> => {
+    if (isTauri()) {
+      return await invoke<string>('login_campus_wifi');
+    }
+    return 'Preview: Campus Wi-Fi signed in successfully';
+  },
+  triggerTestNotification: async (title: string, body: string): Promise<void> => {
+    if (isTauri()) {
+      return await invoke<void>('trigger_test_notification', { title, body });
+    }
+    console.log(`[Notification Preview] ${title}: ${body}`);
+  },
   getCurrentTotp: async (): Promise<TotpCodeResult> => {
     if (isTauri()) {
       return await invoke<TotpCodeResult>('get_current_totp');
@@ -451,6 +469,20 @@ export const api = {
       return await invoke<void>('delete_quick_note', { id });
     }
     memoryQuickNotes = memoryQuickNotes.filter((n) => n.id !== id);
+  },
+
+  // In-app LMS Asset Streaming (lms:// protocol)
+  getLmsFileUrl: async (filePath: string): Promise<string> => {
+    if (isTauri()) {
+      return await invoke<string>('get_lms_file_url', { filePath });
+    }
+    return `lms://localhost/file?path=${encodeURIComponent(filePath)}`;
+  },
+  getMaterialsRoot: async (): Promise<string> => {
+    if (isTauri()) {
+      return await invoke<string>('get_materials_root');
+    }
+    return '';
   },
 
   // Event listener

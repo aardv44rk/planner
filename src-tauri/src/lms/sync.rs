@@ -61,6 +61,7 @@ pub struct ScrapedAssignmentDetails {
     pub status: String,
     pub weight: Option<String>,
     pub description: Option<String>,
+    pub instructions_html: Option<String>,
     pub due_date_text: Option<String>,
     pub handouts: Vec<HandoutItem>,
     pub has_explicit_unsubmitted: bool,
@@ -808,6 +809,43 @@ pub fn parse_course_quarter(c: &Value, title: &str, code: &str, fallback_quarter
     infer_quarter_from_title_or_code(title, code, fallback_quarter).to_string()
 }
 
+/// Sanitizes HTML by removing script, style, iframe, object, embed, form tags,
+/// event handlers, javascript pseudo-protocols, and converts relative URLs to absolute.
+pub fn sanitize_html(raw: &str) -> String {
+    static SCRIPT_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    static STYLE_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    static IFRAME_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    static OBJECT_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    static EMBED_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    static FORM_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    static EVENT_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    static JS_LINK_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+
+    let s_re = SCRIPT_RE.get_or_init(|| regex::Regex::new(r"(?is)<script[^>]*>.*?</script>").unwrap());
+    let sty_re = STYLE_RE.get_or_init(|| regex::Regex::new(r"(?is)<style[^>]*>.*?</style>").unwrap());
+    let if_re = IFRAME_RE.get_or_init(|| regex::Regex::new(r"(?is)<iframe[^>]*>.*?</iframe>").unwrap());
+    let obj_re = OBJECT_RE.get_or_init(|| regex::Regex::new(r"(?is)<object[^>]*>.*?</object>").unwrap());
+    let emb_re = EMBED_RE.get_or_init(|| regex::Regex::new(r"(?is)<embed[^>]*>.*?(?:</embed>|/?>)").unwrap());
+    let form_re = FORM_RE.get_or_init(|| regex::Regex::new(r"(?is)<form[^>]*>.*?</form>").unwrap());
+    let ev_re = EVENT_RE.get_or_init(|| regex::Regex::new(r#"(?i)\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)"#).unwrap());
+    let js_re = JS_LINK_RE.get_or_init(|| regex::Regex::new(r#"(?i)href\s*=\s*["']?\s*javascript:[^"'>]*["']?"#).unwrap());
+
+    let mut res = s_re.replace_all(raw, "").into_owned();
+    res = sty_re.replace_all(&res, "").into_owned();
+    res = if_re.replace_all(&res, "").into_owned();
+    res = obj_re.replace_all(&res, "").into_owned();
+    res = emb_re.replace_all(&res, "").into_owned();
+    res = form_re.replace_all(&res, "").into_owned();
+    res = ev_re.replace_all(&res, "").into_owned();
+    res = js_re.replace_all(&res, "").into_owned();
+
+    // Map root-relative URLs to absolute LMS URLs
+    res = res.replace("href=\"/", "href=\"https://t-class.isct.ac.jp/");
+    res = res.replace("src=\"/", "src=\"https://t-class.isct.ac.jp/");
+
+    res
+}
+
 /// Scrapes assignment details, instructions, handout attachments, and submission status from /mod/{module}/view.php.
 pub async fn scrape_module_page(
     client: &reqwest::Client,
@@ -858,8 +896,8 @@ pub async fn scrape_module_page(
                 let mut explicit_unsubmitted = false;
 
                 if let Some(table) = root.select(&table_sel).next() {
-                    let graded_sel = scraper::Selector::parse("td.submissiongraded").unwrap();
-                    let submitted_sel = scraper::Selector::parse("td.submissionstatussubmitted").unwrap();
+                    let graded_sel = scraper::Selector::parse("td.submissiongraded, td.graded").unwrap();
+                    let submitted_sel = scraper::Selector::parse("td.submissionstatussubmitted, td.earlysubmission, td.submitted").unwrap();
 
                     if table.select(&graded_sel).next().is_some() {
                         st = "graded".to_string();
@@ -993,16 +1031,24 @@ pub async fn scrape_module_page(
         };
 
         // Instructions and Dates from [data-region="activity-dates"] and #intro
-        let intro_sel = scraper::Selector::parse("#intro").unwrap();
+        let intro_sel = scraper::Selector::parse("#intro, .activity-description, .box.py-3.generalbox").unwrap();
         let dates_sel = scraper::Selector::parse(r#"[data-region="activity-dates"], [data-region="activity-information"]"#).unwrap();
 
         let mut desc_parts = Vec::new();
+        let mut html_blocks = Vec::new();
 
         if let Some(dates_el) = root.select(&dates_sel).next() {
             let t = dates_el.text().collect::<Vec<_>>().join(" ");
             let clean = t.split_whitespace().collect::<Vec<_>>().join(" ");
             if !clean.is_empty() {
                 desc_parts.push(clean);
+            }
+            let clean_dates = sanitize_html(&dates_el.inner_html());
+            if !clean_dates.trim().is_empty() {
+                html_blocks.push(format!(
+                    r#"<div class="moodle-activity-dates mb-3 p-3 rounded-md border border-border-subtle bg-bg-surface/50 text-xs text-tx-secondary">{}</div>"#,
+                    clean_dates
+                ));
             }
         }
 
@@ -1012,10 +1058,23 @@ pub async fn scrape_module_page(
             if !clean.is_empty() {
                 desc_parts.push(clean);
             }
+            let clean_intro = sanitize_html(&intro_el.inner_html());
+            if !clean_intro.trim().is_empty() {
+                html_blocks.push(format!(
+                    r#"<div class="moodle-intro text-xs leading-relaxed space-y-2">{}</div>"#,
+                    clean_intro
+                ));
+            }
         }
 
         let description = if !desc_parts.is_empty() {
             Some(desc_parts.join("\n\n"))
+        } else {
+            None
+        };
+
+        let instructions_html = if !html_blocks.is_empty() {
+            Some(html_blocks.join("\n"))
         } else {
             None
         };
@@ -1097,6 +1156,7 @@ pub async fn scrape_module_page(
             status,
             weight,
             description,
+            instructions_html,
             due_date_text: page_due_date,
             handouts,
             has_explicit_unsubmitted,
@@ -1653,6 +1713,7 @@ pub async fn fetch_real_lms_courses_and_assignments(
                 description,
                 handout_name,
                 updated_at: Utc::now().to_rfc3339(),
+                instructions_html: sc_opt.and_then(|sc| sc.instructions_html.clone()),
             });
         }
 
@@ -1721,6 +1782,7 @@ pub async fn fetch_real_lms_courses_and_assignments(
                         description,
                         handout_name,
                         updated_at: Utc::now().to_rfc3339(),
+                        instructions_html: sc_opt.and_then(|sc| sc.instructions_html.clone()),
                     });
                 }
             }
@@ -2006,8 +2068,8 @@ pub async fn upsert_courses(
         for a in &course.assignments {
             sqlx::query(
                 r#"
-                INSERT INTO assignments (id, course_id, title, due_date, due_text, status, weight, description, handout_name, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO assignments (id, course_id, title, due_date, due_text, status, weight, description, handout_name, updated_at, instructions_html)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     title = excluded.title,
                     due_date = excluded.due_date,
@@ -2016,7 +2078,8 @@ pub async fn upsert_courses(
                     weight = excluded.weight,
                     description = excluded.description,
                     handout_name = excluded.handout_name,
-                    updated_at = excluded.updated_at
+                    updated_at = excluded.updated_at,
+                    instructions_html = excluded.instructions_html
                 "#,
             )
             .bind(&a.id)
@@ -2029,6 +2092,7 @@ pub async fn upsert_courses(
             .bind(&a.description)
             .bind(&a.handout_name)
             .bind(&now)
+            .bind(&a.instructions_html)
             .execute(pool)
             .await?;
 

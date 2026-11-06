@@ -19,6 +19,16 @@ import { api } from '../../utils/ipc';
 import { Course, Assignment, PickedFileResult } from '../../types';
 import { useCommandCenterStore } from '../../stores/commandCenterStore';
 import { courseMatchesQuarter, sortCoursesForDisplay, getAvailableAcademicYears } from '../../utils/academic';
+import { ReaderPane, PdfDocument, MarkdownDocument, TextDocument } from '../../features/lms';
+import { useSubmissionGuard } from '../use-submission-guard';
+
+interface ActiveDocumentState {
+  name: string;
+  url: string;
+  fileType: 'pdf' | 'markdown' | 'text';
+  rawContent?: string;
+  externalUrl?: string;
+}
 
 interface HandoutItemData {
   name: string;
@@ -63,10 +73,11 @@ export const CoursesWorkspace: React.FC = () => {
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
-  const [activeTab, setActiveTab] = useState<'instructions' | 'upload'>('instructions');
+  const [activeTab, setActiveTab] = useState<'instructions' | 'upload' | 'reader'>('instructions');
+  const [activeDocument, setActiveDocument] = useState<ActiveDocumentState | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [pickedFile, setPickedFile] = useState<PickedFileResult | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submissionGuard = useSubmissionGuard();
   const [submissionSuccess, setSubmissionSuccess] = useState(false);
   const [submissionMessage, setSubmissionMessage] = useState<string>('');
   const [isSyncing, setIsSyncing] = useState(false);
@@ -194,18 +205,13 @@ export const CoursesWorkspace: React.FC = () => {
 
   const handleRealSubmit = async () => {
     if (!selectedAssignment || !pickedFile) return;
-    setIsSubmitting(true);
-    try {
+    await submissionGuard.run(async () => {
       const result = await api.uploadAssignment(pickedFile.path, selectedAssignment.id);
       setSubmissionSuccess(true);
       setSubmissionMessage(result.message);
       await loadCoursesFromDb();
       await refreshAll();
-    } catch (err: any) {
-      alert(typeof err === 'string' ? err : err?.message || 'Failed to submit assignment to LMS');
-    } finally {
-      setIsSubmitting(false);
-    }
+    });
   };
 
   return (
@@ -499,6 +505,8 @@ export const CoursesWorkspace: React.FC = () => {
                                 setSelectedAssignment(assignment);
                                 setSubmissionSuccess(false);
                                 setPickedFile(null);
+                                setActiveDocument(null);
+                                if (activeTab === 'reader') setActiveTab('instructions');
                               }}
                               className={`p-2 rounded-[var(--radius-chip)] flex items-center justify-between text-xs cursor-pointer transition-colors border ${
                                 isAssignmentSelected
@@ -605,6 +613,19 @@ export const CoursesWorkspace: React.FC = () => {
                 >
                   HW Upload
                 </button>
+                {activeDocument && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('reader')}
+                    className={`px-2.5 py-1 text-xs font-semibold rounded-[4px] transition-colors cursor-pointer ${
+                      activeTab === 'reader'
+                        ? 'bg-accent text-white shadow-subtle'
+                        : 'text-muted hover:text-tx-primary hover:bg-surface-2'
+                    }`}
+                  >
+                    Doc Reader
+                  </button>
+                )}
               </div>
             )}
           </header>
@@ -707,33 +728,56 @@ export const CoursesWorkspace: React.FC = () => {
                               Attached Handouts & Reference Files ({handouts.length})
                             </h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {handouts.map((h, i) => (
-                                <a
-                                  key={i}
-                                  href={h.url || '#'}
-                                  target={h.url ? '_blank' : undefined}
-                                  rel={h.url ? 'noopener noreferrer' : undefined}
-                                  onClick={(e) => {
-                                    if (!h.url) e.preventDefault();
-                                  }}
-                                  className={`p-2.5 rounded-[var(--radius-control)] bg-surface-2 border border-subtle flex items-center justify-between text-xs transition-colors ${
-                                    h.url
-                                      ? 'hover:border-accent/40 hover:bg-elevated cursor-pointer group'
-                                      : 'opacity-80 cursor-default'
-                                  }`}
-                                  title={h.url ? `Open ${h.name}` : h.name}
-                                >
-                                  <div className="flex items-center space-x-2 min-w-0 pr-2">
-                                    <FileText className="w-4 h-4 text-accent flex-shrink-0 stroke-[1.75]" />
-                                    <span className="truncate font-medium text-tx-primary group-hover:text-accent transition-colors">
-                                      {h.name}
-                                    </span>
+                              {handouts.map((h, i) => {
+                                const lower = h.name.toLowerCase();
+                                const fileType: 'pdf' | 'markdown' | 'text' = lower.endsWith('.pdf')
+                                  ? 'pdf'
+                                  : (lower.endsWith('.md') || lower.endsWith('.markdown'))
+                                  ? 'markdown'
+                                  : 'text';
+
+                                return (
+                                  <div
+                                    key={i}
+                                    onClick={() => {
+                                      setActiveDocument({
+                                        name: h.name,
+                                        url: h.url || '',
+                                        fileType,
+                                        externalUrl: h.url,
+                                      });
+                                      setActiveTab('reader');
+                                    }}
+                                    className="p-2.5 rounded-[var(--radius-control)] bg-surface-2 border border-subtle flex items-center justify-between text-xs transition-colors hover:border-accent/40 hover:bg-elevated cursor-pointer group"
+                                    title={`Preview ${h.name}`}
+                                  >
+                                    <div className="flex items-center space-x-2 min-w-0 pr-2">
+                                      <FileText className="w-4 h-4 text-accent flex-shrink-0 stroke-[1.75]" />
+                                      <span className="truncate font-medium text-tx-primary group-hover:text-accent transition-colors">
+                                        {h.name}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center space-x-1.5 flex-shrink-0">
+                                      <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded bg-surface-3 text-muted font-bold">
+                                        {fileType}
+                                      </span>
+                                      {h.url && (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            api.openUrl(h.url!);
+                                          }}
+                                          className="p-1 rounded text-muted hover:text-accent transition-colors"
+                                          title="Open externally"
+                                        >
+                                          <ExternalLink className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
-                                  {h.url && (
-                                    <ExternalLink className="w-3.5 h-3.5 text-muted group-hover:text-accent flex-shrink-0" />
-                                  )}
-                                </a>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         );
@@ -741,8 +785,17 @@ export const CoursesWorkspace: React.FC = () => {
 
                       <div>
                         <h3 className="font-semibold text-xs text-tx-primary mb-1.5">Description & Guidelines</h3>
-                        <div className="p-4 rounded-[var(--radius-control)] bg-surface-2 border border-subtle whitespace-pre-wrap font-sans text-xs leading-relaxed text-tx-primary">
-                          {selectedAssignment?.description || (
+                        <div className="p-4 rounded-[var(--radius-control)] bg-surface-2 border border-subtle font-sans text-xs leading-relaxed text-tx-primary">
+                          {selectedAssignment?.instructions_html || selectedAssignment?.instructionsHtml ? (
+                            <div
+                              className="prose prose-xs dark:prose-invert max-w-none text-xs leading-relaxed space-y-2 [&_a]:text-accent [&_a]:underline [&_table]:border-collapse [&_table]:w-full [&_td]:border [&_td]:border-border-subtle [&_td]:p-2 [&_th]:border [&_th]:border-border-subtle [&_th]:p-2 [&_th]:bg-surface-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-2"
+                              dangerouslySetInnerHTML={{
+                                __html: (selectedAssignment.instructions_html || selectedAssignment.instructionsHtml)!,
+                              }}
+                            />
+                          ) : selectedAssignment?.description ? (
+                            <div className="whitespace-pre-wrap">{selectedAssignment.description}</div>
+                          ) : (
                             <span className="text-muted italic">
                               Course content for {selectedCourse.title}. Refer to the official Science Tokyo LMS portal for detailed files and syllabi.
                             </span>
@@ -810,11 +863,18 @@ export const CoursesWorkspace: React.FC = () => {
 
                         <Button
                           variant="filled"
-                          loading={isSubmitting}
+                          loading={submissionGuard.busy}
                           onClick={handleRealSubmit}
                         >
                           Upload & Submit
                         </Button>
+                      </div>
+                    )}
+
+                    {/* Submission Error Banner */}
+                    {submissionGuard.error && (
+                      <div className="p-3 rounded-[var(--radius-control)] bg-danger-soft border border-danger/30 text-xs text-danger">
+                        {submissionGuard.error}
                       </div>
                     )}
 
@@ -831,6 +891,41 @@ export const CoursesWorkspace: React.FC = () => {
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* Tab 3: Native In-App Document Workbench */}
+              {activeTab === 'reader' && activeDocument && (
+                <div className="flex-1 min-h-0 h-full p-2 bg-surface flex flex-col overflow-hidden">
+                  <ReaderPane
+                    title={activeDocument.name}
+                    fileType={activeDocument.fileType}
+                    onClose={() => {
+                      setActiveTab('instructions');
+                      setActiveDocument(null);
+                    }}
+                    onOpenExternal={
+                      activeDocument.externalUrl
+                        ? () => api.openUrl(activeDocument.externalUrl!)
+                        : undefined
+                    }
+                  >
+                    {activeDocument.fileType === 'pdf' ? (
+                      <PdfDocument url={activeDocument.url} fileKey={activeDocument.name} />
+                    ) : activeDocument.fileType === 'markdown' ? (
+                      <MarkdownDocument
+                        url={activeDocument.url}
+                        rawContent={activeDocument.rawContent}
+                        fileKey={activeDocument.name}
+                      />
+                    ) : (
+                      <TextDocument
+                        url={activeDocument.url}
+                        rawContent={activeDocument.rawContent}
+                        fileKey={activeDocument.name}
+                      />
+                    )}
+                  </ReaderPane>
                 </div>
               )}
             </>

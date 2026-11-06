@@ -71,6 +71,7 @@ pub async fn init_db(config_dir: &Path) -> Result<SqlitePool, sqlx::Error> {
             description TEXT NOT NULL DEFAULT '',
             handout_name TEXT NOT NULL DEFAULT '',
             updated_at TEXT NOT NULL,
+            instructions_html TEXT,
             FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
         );
 
@@ -137,6 +138,9 @@ pub async fn init_db(config_dir: &Path) -> Result<SqlitePool, sqlx::Error> {
         .execute(&pool)
         .await;
     let _ = sqlx::query("ALTER TABLE schedule_blocks ADD COLUMN external_id TEXT")
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE assignments ADD COLUMN instructions_html TEXT")
         .execute(&pool)
         .await;
 
@@ -780,7 +784,7 @@ pub async fn get_courses(pool: &SqlitePool) -> Result<Vec<Course>, sqlx::Error> 
 
     for course in &mut courses {
         let assignments = sqlx::query_as::<_, Assignment>(
-            "SELECT id, course_id, title, due_date, due_text, status, weight, description, handout_name, updated_at FROM assignments WHERE course_id = ? ORDER BY due_date ASC"
+            "SELECT id, course_id, title, due_date, due_text, status, weight, description, handout_name, updated_at, instructions_html FROM assignments WHERE course_id = ? ORDER BY due_date ASC"
         )
         .bind(&course.id)
         .fetch_all(pool)

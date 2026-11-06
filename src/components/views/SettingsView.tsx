@@ -15,7 +15,9 @@ import {
   Calendar,
   Database,
   Grid,
-  Laptop
+  Laptop,
+  Wifi,
+  Bell
 } from 'lucide-react';
 import { api } from '../../utils/ipc';
 import type { CredentialStatus, TotpCodeResult, LmsSyncState } from '../../types';
@@ -141,6 +143,15 @@ export const SettingsView: React.FC = () => {
   });
   const [isSyncingLms, setIsSyncingLms] = useState(false);
   const [lmsSyncMessage, setLmsSyncMessage] = useState<string | null>(null);
+
+  // Campus Wi-Fi & Notification states
+  const [campusWifiAuto, setCampusWifiAuto] = useState<boolean>(() => {
+    return localStorage.getItem('lifeos-campus-wifi-auto') === 'true';
+  });
+  const [wifiChecking, setWifiChecking] = useState(false);
+  const [wifiLoggingIn, setWifiLoggingIn] = useState(false);
+  const [wifiStatusMessage, setWifiStatusMessage] = useState<string | null>(null);
+  const [notifTestMessage, setNotifTestMessage] = useState<string | null>(null);
 
   // Data & System states
   const [trackerEnabled, setTrackerEnabled] = useState<boolean>(() => {
@@ -437,6 +448,49 @@ export const SettingsView: React.FC = () => {
       setSystemMessage('All credentials removed from host OS Vault.');
     } catch (err: any) {
       setErrorMessage(`Wipe credentials failed: ${err.toString()}`);
+    }
+  };
+
+  const handleCheckWifi = async () => {
+    setWifiChecking(true);
+    setWifiStatusMessage(null);
+    try {
+      const isCaptive = await api.checkCampusWifi();
+      if (isCaptive) {
+        setWifiStatusMessage('ScienceTokyo captive portal detected! Sign-in is required.');
+      } else {
+        setWifiStatusMessage('Connected directly to the internet. No captive portal detected.');
+      }
+    } catch (e: any) {
+      setWifiStatusMessage(`Wi-Fi check failed: ${e?.message || e}`);
+    } finally {
+      setWifiChecking(false);
+    }
+  };
+
+  const handleLoginWifi = async () => {
+    setWifiLoggingIn(true);
+    setWifiStatusMessage(null);
+    try {
+      const res = await api.loginCampusWifi();
+      setWifiStatusMessage(res);
+    } catch (e: any) {
+      setWifiStatusMessage(`Wi-Fi sign-in failed: ${e?.message || e}`);
+    } finally {
+      setWifiLoggingIn(false);
+    }
+  };
+
+  const handleTestNotification = async () => {
+    try {
+      await api.triggerTestNotification(
+        'LifeOS Command Center',
+        'Campus deadlines and native desktop notifications are active!'
+      );
+      setNotifTestMessage('Notification dispatched to OS desktop!');
+      setTimeout(() => setNotifTestMessage(null), 4000);
+    } catch (e: any) {
+      setNotifTestMessage(`Notification failed: ${e?.message || e}`);
     }
   };
 
@@ -1164,6 +1218,7 @@ export const SettingsView: React.FC = () => {
                   onClick={() => {
                     setDefaultCalView(opt.id);
                     localStorage.setItem('lifeos-default-cal-view', opt.id);
+                    window.dispatchEvent(new Event('calendar-view-changed'));
                   }}
                   className={`p-3 rounded-lg border text-center transition-colors cursor-pointer text-xs font-semibold ${
                     defaultCalView === opt.id
@@ -1227,6 +1282,99 @@ export const SettingsView: React.FC = () => {
                 </span>
               </div>
             </div>
+          </div>
+
+          {/* ScienceTokyo Campus Wi-Fi Auto-Login */}
+          <div className="p-5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <Wifi className="w-5 h-5 text-[var(--accent)]" />
+                <div>
+                  <h2 className="text-sm font-semibold text-[var(--text-primary)]">ScienceTokyo Campus Wi-Fi</h2>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    Automatically sign into Cisco Meraki captive portal on ScienceTokyo Wi-Fi using vault credentials
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !campusWifiAuto;
+                  setCampusWifiAuto(next);
+                  localStorage.setItem('lifeos-campus-wifi-auto', next ? 'true' : 'false');
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                  campusWifiAuto ? 'bg-[var(--accent)]' : 'bg-[var(--border-subtle)]'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    campusWifiAuto ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleCheckWifi}
+                disabled={wifiChecking || wifiLoggingIn}
+                className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-[var(--bg-canvas)] border border-[var(--border-subtle)] hover:bg-[var(--border-subtle)]/30 cursor-pointer disabled:opacity-40"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${wifiChecking ? 'animate-spin' : ''}`} />
+                <span>{wifiChecking ? 'Checking Portal...' : 'Check Wi-Fi Status'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLoginWifi}
+                disabled={wifiChecking || wifiLoggingIn}
+                className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-[var(--accent)] text-white hover:opacity-90 cursor-pointer disabled:opacity-40"
+              >
+                <Wifi className="w-3.5 h-3.5" />
+                <span>{wifiLoggingIn ? 'Signing In...' : 'Sign In to Campus Wi-Fi'}</span>
+              </button>
+            </div>
+
+            {wifiStatusMessage && (
+              <div className="flex items-center gap-2 p-2.5 text-xs rounded bg-[var(--bg-canvas)] text-[var(--text-primary)] border border-[var(--border-subtle)]">
+                <CheckCircle2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                <span>{wifiStatusMessage}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Native OS Desktop Notifications */}
+          <div className="p-5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <Bell className="w-5 h-5 text-[var(--accent)]" />
+                <div>
+                  <h2 className="text-sm font-semibold text-[var(--text-primary)]">Native Desktop Notifications</h2>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    Background daemon polls every 30m and notifies you of new assignments and 24-hour upcoming deadlines
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleTestNotification}
+                className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-[var(--bg-canvas)] border border-[var(--border-subtle)] hover:bg-[var(--border-subtle)]/30 cursor-pointer"
+              >
+                <Bell className="w-3.5 h-3.5" />
+                <span>Test Notification</span>
+              </button>
+            </div>
+
+            {notifTestMessage && (
+              <div className="flex items-center gap-2 p-2.5 text-xs rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{notifTestMessage}</span>
+              </div>
+            )}
           </div>
         </div>
       )}

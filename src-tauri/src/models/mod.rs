@@ -94,6 +94,9 @@ pub struct Assignment {
     pub description: String,
     pub handout_name: String,
     pub updated_at: String,
+    #[serde(default)]
+    #[sqlx(default)]
+    pub instructions_html: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

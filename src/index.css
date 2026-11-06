@@ -1,3 +1,7 @@
+@import './generated/design/tokens.css';
+@import './generated/design/tokens.dark.css';
+@import './generated/design/themes.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
