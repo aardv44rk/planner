@@ -8,9 +8,59 @@ export type WidgetType =
   | 'habit_matrix'
   | 'quick_notes';
 
-export type AppTab = 'today' | 'courses' | 'tasks' | 'schedule' | 'notes' | 'habits' | 'home';
+export type AppTab = 'today' | 'courses' | 'tasks' | 'schedule' | 'notes' | 'habits' | 'settings' | 'home';
 
 export type WorkspaceType = 'today' | 'courses' | 'home' | 'focus' | 'full' | 'analytics' | 'dashboard';
+
+export interface Course {
+  id: string;
+  code: string;
+  title: string;
+  instructor: string;
+  schedule: string;
+  room: string;
+  color: string;
+  term?: string;
+  updated_at?: string;
+  assignments: Assignment[];
+}
+
+export interface Assignment {
+  id: string;
+  course_id?: string;
+  title: string;
+  due_date?: string;
+  dueDate?: string;
+  due_text?: string;
+  dueText?: string;
+  status: 'pending' | 'submitted' | 'graded';
+  weight: string;
+  description: string;
+  handout_name?: string;
+  handoutName?: string;
+  updated_at?: string;
+}
+
+export interface CredentialStatus {
+  configured: boolean;
+  username: string | null;
+  has_username: boolean;
+  has_password: boolean;
+  has_totp: boolean;
+  session_cached: boolean;
+}
+
+export interface UploadResult {
+  success: boolean;
+  message: string;
+  assignment_id: string;
+  filename: string;
+}
+
+export interface TotpCodeResult {
+  code: string;
+  seconds_remaining: number;
+}
 
 export interface WidgetConfig {
   id: string;

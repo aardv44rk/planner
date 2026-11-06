@@ -14,10 +14,12 @@ import {
   FolderKanban,
   Check,
   GraduationCap,
+  KeyRound,
 } from 'lucide-react';
 import { useLayoutStore } from '../stores/layoutStore';
 import { useThemeStore } from '../stores/themeStore';
 import { useCommandCenterStore } from '../stores/commandCenterStore';
+import { courseMatchesQuarter, sortCoursesForDisplay, getAvailableAcademicYears } from '../utils/academic';
 import { AppTab } from '../types';
 
 interface NavItem {
@@ -64,6 +66,12 @@ const navTabs: NavItem[] = [
     shortDesc: 'Streak matrix & time analytics',
     icon: Sparkles,
   },
+  {
+    id: 'settings',
+    label: 'Settings',
+    shortDesc: 'University Auth & OS Vault',
+    icon: KeyRound,
+  },
 ];
 
 export const Sidebar: React.FC = () => {
@@ -83,7 +91,19 @@ export const Sidebar: React.FC = () => {
     habitMatrix,
     metrics,
     scheduleBlocks,
+    courses,
+    selectedQuarter,
+    setSelectedQuarter,
+    selectedAcademicYear,
+    setSelectedAcademicYear,
+    currentAcademicYear,
+    currentQuarter,
+    fetchCourses,
   } = useCommandCenterStore();
+
+  useEffect(() => {
+    fetchCourses();
+  }, []);
 
   // Keyboard shortcut Ctrl+\ / Cmd+\ to toggle expanded sub-navigation drawer
   useEffect(() => {
@@ -105,6 +125,13 @@ export const Sidebar: React.FC = () => {
     acc[proj] = (acc[proj] || 0) + 1;
     return acc;
   }, {});
+
+  // Academic year and quarter courses filtered properly
+  const availableAcademicYears = getAvailableAcademicYears(courses);
+  const activeYearCourses = courses.filter((c) =>
+    courseMatchesQuarter(c.term, selectedQuarter, selectedAcademicYear)
+  );
+  const sortedSidebarCourses = sortCoursesForDisplay(activeYearCourses);
 
   return (
     <aside className="h-full flex flex-shrink-0 z-30 select-none">
@@ -267,37 +294,96 @@ export const Sidebar: React.FC = () => {
                     Enrolled Classes
                   </span>
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-[6px] bg-surface-3 text-accent font-semibold">
-                    4 Active
+                    {sortedSidebarCourses.length} Active
                   </span>
                 </div>
 
-                <div className="space-y-1">
-                  {[
-                    { code: 'CS.301', name: 'Operating Systems', count: '2 Tasks' },
-                    { code: 'AI.420', name: 'Machine Learning', count: '1 Task' },
-                    { code: 'PH.210', name: 'Quantum Mechanics', count: '1 Task' },
-                    { code: 'MA.315', name: 'Stochastic Processes', count: '1 Task' },
-                  ].map((c) => (
+                {/* Academic Year Switcher (Active vs Archive) */}
+                {availableAcademicYears.length > 1 && (
+                  <div className="flex items-center gap-1 bg-surface-3 p-0.5 rounded-[var(--radius-control)]">
+                    {availableAcademicYears.map((yr) => {
+                      const isSel = selectedAcademicYear === yr;
+                      const isCurrent = Number(yr) === currentAcademicYear;
+                      return (
+                        <button
+                          key={yr}
+                          type="button"
+                          onClick={() => setSelectedAcademicYear(yr)}
+                          className={`flex-1 text-[10px] py-0.5 rounded-[var(--radius-chip)] font-mono transition-colors cursor-pointer text-center ${
+                            isSel
+                              ? 'bg-surface text-tx-primary font-semibold shadow-xs'
+                              : 'text-muted hover:text-tx-primary'
+                          }`}
+                        >
+                          {yr} {isCurrent ? 'AY' : 'Arc'}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Quarter Filter Chips in Sidebar */}
+                <div className="flex items-center gap-1 overflow-x-auto custom-scrollbar pb-1">
+                  {['3Q', '4Q', '1Q', '2Q', 'All'].map((q) => {
+                    const isSel = selectedQuarter === q;
+                    const isNow = q === currentQuarter && Number(selectedAcademicYear) === currentAcademicYear;
+                    return (
+                      <button
+                        key={q}
+                        type="button"
+                        onClick={() => setSelectedQuarter(q)}
+                        className={`text-[10px] px-2 py-0.5 rounded-full font-mono transition-colors cursor-pointer flex items-center space-x-1 ${
+                          isSel
+                            ? 'bg-accent text-white font-semibold shadow-xs'
+                            : 'bg-surface text-muted hover:text-tx-primary hover:bg-surface-3'
+                        }`}
+                      >
+                        <span>{q}</span>
+                        {isNow && <span className="w-1 h-1 rounded-full bg-emerald-400" />}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="space-y-1 max-h-[340px] overflow-y-auto custom-scrollbar pr-1">
+                  {sortedSidebarCourses.map((c) => (
                     <div
-                      key={c.code}
-                      className="p-2 rounded-[10px] bg-surface border border-subtle text-xs flex items-center justify-between"
+                      key={c.id}
+                      className="p-2 rounded-[10px] bg-surface border border-subtle text-xs flex items-center justify-between hover:border-accent/40 transition-colors"
                     >
-                      <div>
-                        <div className="font-mono font-bold text-accent text-[11px]">{c.code}</div>
-                        <div className="text-[11px] text-tx-primary truncate max-w-[120px]">{c.name}</div>
+                      <div className="min-w-0 pr-1">
+                        <div className="flex items-center space-x-1.5">
+                          <span
+                            className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: c.color || 'var(--accent)' }}
+                          />
+                          <span className="font-mono font-bold text-accent text-[11px] truncate">
+                            {c.code}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-tx-primary truncate max-w-[130px] mt-0.5" title={c.title}>
+                          {c.title}
+                        </div>
                       </div>
-                      <span className="text-[10px] text-muted font-mono">{c.count}</span>
+                      <span className="text-[9px] text-muted font-mono flex-shrink-0">
+                        {c.assignments?.length ? `${c.assignments.length} Tasks` : 'Active'}
+                      </span>
                     </div>
                   ))}
+                  {sortedSidebarCourses.length === 0 && (
+                    <div className="text-center py-4 text-[11px] text-muted">
+                      No courses found for {selectedAcademicYear} {selectedQuarter}
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-2 border-t border-subtle">
                   <div className="p-2 rounded-[10px] bg-surface-3 text-muted text-[11px] space-y-1">
                     <div className="font-semibold text-tx-primary flex items-center space-x-1">
                       <GraduationCap className="w-3.5 h-3.5 text-accent" />
-                      <span>Science Tokyo Moodle</span>
+                      <span>Science Tokyo LMS</span>
                     </div>
-                    <div>Quarter: 2026 Fall (3Q/4Q)</div>
+                    <div>{selectedAcademicYear} Academic Year · {selectedQuarter === 'All' ? 'All Quarters' : `Quarter ${selectedQuarter}`}</div>
                   </div>
                 </div>
               </div>
@@ -433,6 +519,24 @@ export const Sidebar: React.FC = () => {
                       </div>
                     );
                   })}
+                </div>
+              </div>
+            )}
+
+            {/* SUB-NAV 7: SETTINGS */}
+            {activeTab === 'settings' && (
+              <div className="space-y-3">
+                <span className="text-[11px] uppercase tracking-wider font-semibold text-muted block">
+                  Security & Accounts
+                </span>
+                <div className="p-3 rounded-[10px] bg-surface border border-subtle text-xs space-y-2">
+                  <div className="font-semibold text-tx-primary flex items-center space-x-1.5">
+                    <KeyRound className="w-3.5 h-3.5 text-accent stroke-[2]" />
+                    <span>Science Tokyo Enclave</span>
+                  </div>
+                  <p className="text-[11px] text-muted leading-relaxed">
+                    Credentials stored in OS Keyring. TOTP codes auto-generated during headless SAML authentication.
+                  </p>
                 </div>
               </div>
             )}

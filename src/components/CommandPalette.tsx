@@ -14,6 +14,7 @@ import {
   ArrowRight,
   FileText,
   Sparkles,
+  KeyRound,
 } from 'lucide-react';
 import { useCommandCenterStore } from '../stores/commandCenterStore';
 import { useThemeStore } from '../stores/themeStore';
@@ -154,6 +155,17 @@ export const CommandPalette: React.FC = () => {
       shortcut: '6',
       action: () => {
         setActiveTab('habits');
+        setCommandPaletteOpen(false);
+      },
+    },
+    {
+      id: 'nav-settings',
+      title: 'Go to Institutions & Security Settings',
+      category: 'Navigation',
+      icon: KeyRound,
+      shortcut: '7',
+      action: () => {
+        setActiveTab('settings');
         setCommandPaletteOpen(false);
       },
     },

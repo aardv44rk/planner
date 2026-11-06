@@ -7,6 +7,7 @@ import { TasksView } from './components/views/TasksView';
 import { ScheduleView } from './components/views/ScheduleView';
 import { NotesView } from './components/views/NotesView';
 import { HabitsView } from './components/views/HabitsView';
+import { SettingsView } from './components/views/SettingsView';
 import { CommandPalette } from './components/CommandPalette';
 import { useLayoutStore } from './stores/layoutStore';
 import { useCommandCenterStore } from './stores/commandCenterStore';
@@ -51,6 +52,7 @@ export const App: React.FC = () => {
           {activeTab === 'schedule' && <ScheduleView />}
           {activeTab === 'notes' && <NotesView />}
           {activeTab === 'habits' && <HabitsView />}
+          {activeTab === 'settings' && <SettingsView />}
         </main>
       </div>
 

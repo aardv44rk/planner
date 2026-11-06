@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   ActivitySummary,
+  Course,
   CreateScheduleBlockInput,
   CreateTaskInput,
   DailyNote,
@@ -12,8 +13,10 @@ import {
   UpdateTaskInput,
 } from '../types';
 import { api } from '../utils/ipc';
+import { getCurrentAcademicTerm } from '../utils/academic';
 
 const getTodayString = () => new Date().toISOString().split('T')[0];
+const initialAcademicTerm = getCurrentAcademicTerm();
 
 interface CommandCenterState {
   tasks: Task[];
@@ -24,12 +27,22 @@ interface CommandCenterState {
   habitMatrix: HabitDay[];
   notesHistory: string[];
   activitySummary: ActivitySummary | null;
+  courses: Course[];
+  currentAcademicYear: number;
+  currentQuarter: string;
+  selectedAcademicYear: string;
+  selectedQuarter: string;
   selectedDate: string;
   isCommandPaletteOpen: boolean;
   isLoading: boolean;
 
   setSelectedDate: (date: string) => void;
+  setSelectedAcademicYear: (year: string) => void;
+  setSelectedQuarter: (quarter: string) => void;
   setCommandPaletteOpen: (open: boolean) => void;
+
+  // Courses
+  fetchCourses: () => Promise<void>;
 
   // Tasks
   fetchTasks: () => Promise<void>;
@@ -64,6 +77,11 @@ interface CommandCenterState {
 export const useCommandCenterStore = create<CommandCenterState>((set, get) => ({
   tasks: [],
   scheduleBlocks: [],
+  courses: [],
+  currentAcademicYear: initialAcademicTerm.academicYear,
+  currentQuarter: initialAcademicTerm.quarter,
+  selectedAcademicYear: String(initialAcademicTerm.academicYear),
+  selectedQuarter: initialAcademicTerm.quarter,
   dailyNote: null,
   metrics: null,
   timeAllocation: [],
@@ -83,7 +101,24 @@ export const useCommandCenterStore = create<CommandCenterState>((set, get) => ({
     get().fetchHabitMatrix();
   },
 
+  setSelectedAcademicYear: (year: string) => {
+    set({ selectedAcademicYear: year });
+  },
+
+  setSelectedQuarter: (quarter: string) => {
+    set({ selectedQuarter: quarter });
+  },
+
   setCommandPaletteOpen: (open: boolean) => set({ isCommandPaletteOpen: open }),
+
+  fetchCourses: async () => {
+    try {
+      const courses = await api.getCourses();
+      set({ courses: courses || [] });
+    } catch (err) {
+      console.error('Failed to fetch courses:', err);
+    }
+  },
 
   fetchTasks: async () => {
     try {
@@ -263,6 +298,7 @@ export const useCommandCenterStore = create<CommandCenterState>((set, get) => ({
   refreshAll: async () => {
     set({ isLoading: true });
     await Promise.all([
+      get().fetchCourses(),
       get().fetchTasks(),
       get().fetchSchedule(get().selectedDate),
       get().fetchDailyNote(get().selectedDate),

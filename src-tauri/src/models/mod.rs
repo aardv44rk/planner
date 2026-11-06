@@ -6,6 +6,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_manual() -> Option<String> {
+    Some("manual".to_string())
+}
+
 fn default_workspace() -> String {
     "home".to_string()
 }
@@ -20,6 +24,11 @@ pub struct Task {
     pub due_date: Option<String>,
     pub completed: i64,
     pub created_at: String,
+    #[serde(default = "default_manual")]
+    #[sqlx(default)]
+    pub source: Option<String>,
+    #[sqlx(default)]
+    pub external_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,6 +58,42 @@ pub struct ScheduleBlock {
     pub end_time: String,
     pub category: String,
     pub date: String,
+    #[serde(default = "default_manual")]
+    #[sqlx(default)]
+    pub source: Option<String>,
+    #[sqlx(default)]
+    pub external_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Course {
+    pub id: String,
+    pub code: String,
+    pub title: String,
+    pub instructor: String,
+    pub schedule: String,
+    pub room: String,
+    pub color: String,
+    #[serde(default)]
+    pub term: String,
+    pub updated_at: String,
+    #[serde(default)]
+    #[sqlx(skip)]
+    pub assignments: Vec<Assignment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Assignment {
+    pub id: String,
+    pub course_id: String,
+    pub title: String,
+    pub due_date: String,
+    pub due_text: String,
+    pub status: String,
+    pub weight: String,
+    pub description: String,
+    pub handout_name: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

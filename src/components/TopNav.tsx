@@ -27,6 +27,7 @@ const tabTitles: Record<AppTab, string> = {
   schedule: 'Calendar & Schedule',
   notes: 'Notes & Vault',
   habits: 'Habits & Metrics',
+  settings: 'Institutions & Settings',
   home: 'Home Dashboard',
 };
 

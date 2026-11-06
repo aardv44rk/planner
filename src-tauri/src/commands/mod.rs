@@ -306,3 +306,117 @@ fn parse_time_hh_mm(dt: &str) -> (u32, u32) {
     let m = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
     (h, m)
 }
+
+// ==========================================
+// Science Tokyo LMS & Authentication Commands
+// ==========================================
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CredentialStatus {
+    pub configured: bool,
+    pub username: Option<String>,
+    pub has_username: bool,
+    pub has_password: bool,
+    pub has_totp: bool,
+    pub session_cached: bool,
+}
+
+#[tauri::command]
+pub async fn save_credentials(
+    username: String,
+    password: String,
+    totp_seed: String,
+) -> Result<(), String> {
+    crate::auth::store_credentials(&username, &password, &totp_seed).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_credential_status(state: State<'_, Arc<AppState>>) -> Result<CredentialStatus, String> {
+    let creds = crate::auth::retrieve_credentials().map_err(|e| e.to_string())?;
+    let totp_seed = crate::auth::retrieve_totp_seed().unwrap_or(None);
+    let session_cached = crate::lms::load_session(&state.config_dir)
+        .map(|opt| opt.is_some())
+        .unwrap_or(false);
+
+    let has_username = creds.as_ref().map(|c| !c.username.is_empty()).unwrap_or(false);
+    let has_password = creds.as_ref().map(|c| !c.password.is_empty()).unwrap_or(false);
+    let has_totp = totp_seed.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
+        || creds.as_ref().map(|c| !c.totp_seed.is_empty()).unwrap_or(false);
+
+    Ok(CredentialStatus {
+        configured: creds.is_some() && (has_username || has_totp),
+        username: creds.as_ref().map(|c| c.username.clone()),
+        has_username,
+        has_password,
+        has_totp,
+        session_cached,
+    })
+}
+
+#[tauri::command]
+pub async fn clear_credentials(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    let _ = crate::lms::clear_session(&state.config_dir);
+    crate::auth::delete_credentials().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn sync_lms(state: State<'_, Arc<AppState>>) -> Result<String, String> {
+    crate::lms::sync_courses_and_tasks(&state.config_dir, &state.db)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_courses(state: State<'_, Arc<AppState>>) -> Result<Vec<crate::models::Course>, String> {
+    db::get_courses(&state.db).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn upload_assignment(
+    state: State<'_, Arc<AppState>>,
+    file_path: String,
+    assignment_id: String,
+) -> Result<crate::lms::UploadResult, String> {
+    crate::lms::upload_assignment(&state.config_dir, &file_path, &assignment_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn pick_and_upload_assignment(
+    state: State<'_, Arc<AppState>>,
+    assignment_id: String,
+) -> Result<crate::lms::UploadResult, String> {
+    let file = rfd::AsyncFileDialog::new()
+        .set_title("Select Assignment File to Submit")
+        .pick_file()
+        .await
+        .ok_or_else(|| "File selection was cancelled".to_string())?;
+
+    let file_path = file.path().to_string_lossy().to_string();
+    crate::lms::upload_assignment(&state.config_dir, &file_path, &assignment_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_current_totp() -> Result<crate::auth::TotpCodeResult, String> {
+    let seed = crate::auth::retrieve_totp_seed()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "No TOTP seed is configured in the vault".to_string())?;
+
+    crate::auth::get_totp_code_info(&seed).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn verify_totp_seed(seed: String) -> Result<crate::auth::TotpCodeResult, String> {
+    crate::auth::get_totp_code_info(&seed).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn save_totp_seed(seed: String) -> Result<crate::auth::TotpCodeResult, String> {
+    let code_info = crate::auth::get_totp_code_info(&seed).map_err(|e| e.to_string())?;
+    crate::auth::store_totp_seed(&seed).map_err(|e| e.to_string())?;
+    Ok(code_info)
+}
+

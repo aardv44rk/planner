@@ -2,8 +2,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import {
   ActivitySummary,
+  Course,
   CreateScheduleBlockInput,
   CreateTaskInput,
+  CredentialStatus,
   DailyNote,
   DashboardMetrics,
   HabitDay,
@@ -11,7 +13,9 @@ import {
   ScheduleBlock,
   Task,
   TimeAllocationItem,
+  TotpCodeResult,
   UpdateTaskInput,
+  UploadResult,
 } from '../types';
 
 export const isTauri = (): boolean => {
@@ -247,6 +251,80 @@ export const api = {
       habit_name: name,
       days: [false, false, false, false, false, false, false],
     });
+  },
+
+  // University LMS & Secure Vault Auth
+  saveCredentials: async (username?: string, password?: string, totpSeed?: string): Promise<void> => {
+    if (isTauri()) {
+      return await invoke<void>('save_credentials', {
+        username: username || '',
+        password: password || '',
+        totpSeed: totpSeed || '',
+      });
+    }
+  },
+  getCredentialStatus: async (): Promise<CredentialStatus> => {
+    if (isTauri()) {
+      return await invoke<CredentialStatus>('get_credential_status');
+    }
+    return { configured: false, username: null, has_username: false, has_password: false, has_totp: false, session_cached: false };
+  },
+  pickAndUploadAssignment: async (assignmentId: string): Promise<UploadResult> => {
+    if (isTauri()) {
+      return await invoke<UploadResult>('pick_and_upload_assignment', { assignmentId });
+    }
+    return {
+      success: true,
+      message: `Simulated submission for assignment ${assignmentId}`,
+      assignment_id: assignmentId,
+      filename: 'submission.pdf',
+    };
+  },
+  clearCredentials: async (): Promise<void> => {
+    if (isTauri()) {
+      return await invoke<void>('clear_credentials');
+    }
+  },
+  syncLms: async (): Promise<string> => {
+    if (isTauri()) {
+      return await invoke<string>('sync_lms');
+    }
+    return 'Synced courses and tasks (Preview mode)';
+  },
+  getCourses: async (): Promise<Course[]> => {
+    if (isTauri()) {
+      return await invoke<Course[]>('get_courses');
+    }
+    return [];
+  },
+  uploadAssignment: async (filePath: string, assignmentId: string): Promise<UploadResult> => {
+    if (isTauri()) {
+      return await invoke<UploadResult>('upload_assignment', { filePath, assignmentId });
+    }
+    return {
+      success: true,
+      message: `Simulated submission for assignment ${assignmentId}`,
+      assignment_id: assignmentId,
+      filename: filePath.split(/[\\/]/).pop() || 'submission.pdf',
+    };
+  },
+  getCurrentTotp: async (): Promise<TotpCodeResult> => {
+    if (isTauri()) {
+      return await invoke<TotpCodeResult>('get_current_totp');
+    }
+    return { code: '123456', seconds_remaining: 30 };
+  },
+  verifyTotpSeed: async (seed: string): Promise<TotpCodeResult> => {
+    if (isTauri()) {
+      return await invoke<TotpCodeResult>('verify_totp_seed', { seed });
+    }
+    return { code: '123456', seconds_remaining: 30 };
+  },
+  saveTotpSeed: async (seed: string): Promise<TotpCodeResult> => {
+    if (isTauri()) {
+      return await invoke<TotpCodeResult>('save_totp_seed', { seed });
+    }
+    return { code: '123456', seconds_remaining: 30 };
   },
 
   // Event listener

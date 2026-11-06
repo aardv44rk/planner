@@ -1,6 +1,8 @@
+pub mod auth;
 pub mod commands;
 pub mod config;
 pub mod db;
+pub mod lms;
 pub mod models;
 pub mod plugins;
 
@@ -69,6 +71,17 @@ pub fn run() {
             commands::get_habit_matrix,
             commands::toggle_habit_day,
             commands::create_habit,
+            // Science Tokyo LMS & Auth
+            commands::save_credentials,
+            commands::get_credential_status,
+            commands::clear_credentials,
+            commands::sync_lms,
+            commands::get_courses,
+            commands::upload_assignment,
+            commands::pick_and_upload_assignment,
+            commands::get_current_totp,
+            commands::verify_totp_seed,
+            commands::save_totp_seed,
         ])
         .run(tauri::generate_context!())
         .expect("Error while running LifeOS Command Center");

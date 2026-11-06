@@ -3,7 +3,7 @@ use chrono::{Datelike, Duration, Local, NaiveDate};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use uuid::Uuid;
 use crate::models::{
-    ActivitySummary, CreateScheduleBlockInput, CreateTaskInput, DailyNote,
+    ActivitySummary, Assignment, Course, CreateScheduleBlockInput, CreateTaskInput, DailyNote,
     DashboardMetrics, Habit, HabitDay, MetricSparklines, ScheduleBlock, Task,
     TimeAllocationItem, UpdateTaskInput,
 };
@@ -32,7 +32,9 @@ pub async fn init_db(config_dir: &Path) -> Result<SqlitePool, sqlx::Error> {
             priority TEXT NOT NULL DEFAULT 'medium',
             due_date TEXT,
             completed INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'manual',
+            external_id TEXT
         );
 
         CREATE TABLE IF NOT EXISTS schedule_blocks (
@@ -41,7 +43,35 @@ pub async fn init_db(config_dir: &Path) -> Result<SqlitePool, sqlx::Error> {
             start_time TEXT NOT NULL,
             end_time TEXT NOT NULL,
             category TEXT NOT NULL DEFAULT 'General',
-            date TEXT NOT NULL
+            date TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'manual',
+            external_id TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS courses (
+            id TEXT PRIMARY KEY NOT NULL,
+            code TEXT NOT NULL,
+            title TEXT NOT NULL,
+            instructor TEXT NOT NULL DEFAULT '',
+            schedule TEXT NOT NULL DEFAULT '',
+            room TEXT NOT NULL DEFAULT '',
+            color TEXT NOT NULL DEFAULT '#2f5fd0',
+            term TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS assignments (
+            id TEXT PRIMARY KEY NOT NULL,
+            course_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            due_date TEXT NOT NULL,
+            due_text TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'pending',
+            weight TEXT NOT NULL DEFAULT '',
+            description TEXT NOT NULL DEFAULT '',
+            handout_name TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS daily_notes (
@@ -77,10 +107,25 @@ pub async fn init_db(config_dir: &Path) -> Result<SqlitePool, sqlx::Error> {
         CREATE INDEX IF NOT EXISTS idx_schedule_blocks_date ON schedule_blocks(date);
         CREATE INDEX IF NOT EXISTS idx_app_activity_recorded_date ON app_activity_log(recorded_date);
         CREATE INDEX IF NOT EXISTS idx_habit_completions_date ON habit_completions(date);
+        CREATE INDEX IF NOT EXISTS idx_assignments_course_id ON assignments(course_id);
         "#,
     )
     .execute(&pool)
     .await?;
+
+    // Safe column migrations for existing databases
+    let _ = sqlx::query("ALTER TABLE tasks ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'")
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE tasks ADD COLUMN external_id TEXT")
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE schedule_blocks ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'")
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE schedule_blocks ADD COLUMN external_id TEXT")
+        .execute(&pool)
+        .await;
 
     // Seed initial data if tables are empty
     seed_if_empty(&pool).await?;
@@ -262,6 +307,8 @@ pub async fn create_task(pool: &SqlitePool, input: CreateTaskInput) -> Result<Ta
         due_date: input.due_date,
         completed,
         created_at: now,
+        source: Some("manual".to_string()),
+        external_id: None,
     })
 }
 
@@ -378,6 +425,8 @@ pub async fn create_schedule_block(pool: &SqlitePool, input: CreateScheduleBlock
         end_time: input.end_time,
         category,
         date: input.date,
+        source: Some("manual".to_string()),
+        external_id: None,
     })
 }
 
@@ -685,3 +734,26 @@ pub async fn create_habit(pool: &SqlitePool, name: &str) -> Result<Habit, sqlx::
         created_at: now,
     })
 }
+
+pub async fn get_courses(pool: &SqlitePool) -> Result<Vec<Course>, sqlx::Error> {
+    let mut courses = sqlx::query_as::<_, Course>(
+        "SELECT id, code, title, instructor, schedule, room, color, term, updated_at FROM courses ORDER BY code ASC"
+    )
+    .fetch_all(pool)
+    .await?;
+
+    for course in &mut courses {
+        let assignments = sqlx::query_as::<_, Assignment>(
+            "SELECT id, course_id, title, due_date, due_text, status, weight, description, handout_name, updated_at FROM assignments WHERE course_id = ? ORDER BY due_date ASC"
+        )
+        .bind(&course.id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+
+        course.assignments = assignments;
+    }
+
+    Ok(courses)
+}
+

@@ -32,8 +32,9 @@ import { useCommandCenterStore } from '../../stores/commandCenterStore';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { ScheduleBlock } from '../../types';
 import { api } from '../../utils/ipc';
+import { courseMatchesQuarter } from '../../utils/academic';
 
-export type CalendarViewMode = 'day' | 'week' | 'month';
+export type CalendarViewMode = 'day' | 'week' | 'month' | 'timetable';
 
 interface ScheduleWidgetProps {
   fullScreen?: boolean;
@@ -51,11 +52,15 @@ export const ScheduleWidget: React.FC<ScheduleWidgetProps> = ({
     createScheduleBlock,
     deleteScheduleBlock,
     importIcs,
+    courses,
+    selectedQuarter,
+    setSelectedQuarter,
+    selectedAcademicYear,
   } = useCommandCenterStore();
 
   const { isWidgetPinned, toggleWidgetPin } = useLayoutStore();
 
-  const [viewMode, setViewMode] = useState<CalendarViewMode>(fullScreen ? 'month' : 'week');
+  const [viewMode, setViewMode] = useState<CalendarViewMode>(fullScreen ? 'timetable' : 'week');
   const [currentDate, setCurrentDate] = useState<Date>(() => {
     try {
       return parseISO(selectedDate);
@@ -271,6 +276,22 @@ export const ScheduleWidget: React.FC<ScheduleWidgetProps> = ({
     }
   };
 
+  const findCoursesForSlot = (dayName: string, slotPeriods: number[]) => {
+    return courses
+      .filter((c) => courseMatchesQuarter(c.term, selectedQuarter, selectedAcademicYear))
+      .filter((c) => {
+        if (!c.schedule || c.schedule.includes('On-Demand') || c.schedule.includes('Project')) return false;
+        const hasDay = c.schedule.includes(dayName);
+        if (!hasDay) return false;
+        if (slotPeriods.includes(1) && (c.schedule.includes('08:50') || c.schedule.includes('10:30'))) return true;
+        if (slotPeriods.includes(3) && (c.schedule.includes('10:45') || c.schedule.includes('12:25'))) return true;
+        if (slotPeriods.includes(5) && (c.schedule.includes('13:30') || c.schedule.includes('15:10'))) return true;
+        if (slotPeriods.includes(7) && (c.schedule.includes('15:25') || c.schedule.includes('17:05'))) return true;
+        if (slotPeriods.includes(9) && (c.schedule.includes('17:15') || c.schedule.includes('18:55'))) return true;
+        return false;
+      });
+  };
+
   return (
     <div
       className={`@container flex flex-col h-full w-full select-none min-h-0 overflow-hidden ${
@@ -322,9 +343,9 @@ export const ScheduleWidget: React.FC<ScheduleWidgetProps> = ({
             </button>
           )}
 
-          {/* Segmented View Mode Switcher: Day | Week | Month */}
+          {/* Segmented View Mode Switcher: Day | Week | Month | Timetable */}
           <div className="flex items-center bg-canvas/80 border border-subtle/60 rounded p-0.5 space-x-0.5 text-[9px] font-medium shrink-0">
-            {(['day', 'week', 'month'] as const).map((mode) => (
+            {(['day', 'week', 'month', 'timetable'] as const).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setViewMode(mode)}
@@ -334,7 +355,7 @@ export const ScheduleWidget: React.FC<ScheduleWidgetProps> = ({
                     : 'text-tx-muted hover:text-tx-primary'
                 }`}
               >
-                {mode}
+                {mode === 'timetable' ? 'Timetable' : mode}
               </button>
             ))}
           </div>
@@ -577,6 +598,183 @@ export const ScheduleWidget: React.FC<ScheduleWidgetProps> = ({
                   </div>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Timetable (時間割) View */}
+      {viewMode === 'timetable' && (
+        <div className="flex-1 min-h-0 flex flex-col pt-1 overflow-hidden">
+          {/* Quarter bar and quick summary */}
+          <div className="flex-shrink-0 flex items-center justify-between pb-2 border-b border-subtle/50">
+            <div className="flex items-center space-x-1.5">
+              <span className="text-[11px] font-semibold text-tx-primary">
+                Science Tokyo LMS Timetable
+              </span>
+              <span className="text-[10px] font-mono text-muted">
+                {selectedQuarter === 'All' ? 'Full Academic Year' : `Quarter ${selectedQuarter}`}
+              </span>
+            </div>
+
+            {/* Quarter Filter Chips */}
+            <div className="flex items-center gap-1">
+              {['3Q', '4Q', '1Q', '2Q', 'All'].map((q) => {
+                const isSel = selectedQuarter === q;
+                const count = q === 'All'
+                  ? courses.filter((c) => courseMatchesQuarter(c.term, 'All', selectedAcademicYear)).length
+                  : courses.filter((c) => courseMatchesQuarter(c.term, q, selectedAcademicYear)).length;
+                return (
+                  <button
+                    key={q}
+                    type="button"
+                    onClick={() => setSelectedQuarter(q)}
+                    className={`text-[10px] px-2 py-0.5 rounded font-mono transition-colors cursor-pointer ${
+                      isSel
+                        ? 'bg-accent text-white font-semibold shadow-xs'
+                        : 'bg-surface text-muted hover:text-tx-primary hover:bg-surface-3'
+                    }`}
+                  >
+                    <span>{q}</span>
+                    <span className="ml-1 opacity-75">({count})</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Timetable Grid Container */}
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pt-2 space-y-3">
+            <div className="w-full border border-subtle rounded-[var(--radius-control)] overflow-hidden bg-surface">
+              {/* Header: Periods & Days */}
+              <div className="grid grid-cols-7 border-b border-subtle bg-surface-3 text-[11px] font-semibold text-tx-primary divide-x divide-subtle select-none">
+                <div className="p-2 text-center text-muted font-mono text-[10px]">時限 / Period</div>
+                {['Mon (月)', 'Tue (火)', 'Wed (水)', 'Thu (木)', 'Fri (金)', 'Sat (土)'].map((day) => (
+                  <div key={day} className="p-2 text-center text-[11px] font-medium text-tx-primary">
+                    {day}
+                  </div>
+                ))}
+              </div>
+
+              {/* Rows for 1-2, 3-4, Lunch, 5-6, 7-8, 9-10 */}
+              {[
+                { slotLabel: '1–2', times: '08:50 – 10:30', periods: [1, 2], isBreak: false },
+                { slotLabel: '3–4', times: '10:45 – 12:25', periods: [3, 4], isBreak: false },
+                { slotLabel: 'Lunch', times: '12:25 – 13:30', periods: [], isBreak: true },
+                { slotLabel: '5–6', times: '13:30 – 15:10', periods: [5, 6], isBreak: false },
+                { slotLabel: '7–8', times: '15:25 – 17:05', periods: [7, 8], isBreak: false },
+                { slotLabel: '9–10', times: '17:15 – 18:55', periods: [9, 10], isBreak: false },
+              ].map((slot) => {
+                if (slot.isBreak) {
+                  return (
+                    <div
+                      key={slot.slotLabel}
+                      className="grid grid-cols-7 border-b border-subtle/50 bg-surface-2/40 text-[10px] text-muted py-1 divide-x divide-subtle/30"
+                    >
+                      <div className="px-2 text-center font-mono font-medium">{slot.times}</div>
+                      <div className="col-span-6 px-3 text-center text-[10px] text-muted font-medium italic">
+                        Lunch Break / 昼休み
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div
+                    key={slot.slotLabel}
+                    className="grid grid-cols-7 border-b border-subtle/50 divide-x divide-subtle min-h-[64px]"
+                  >
+                    {/* Period label */}
+                    <div className="p-2 flex flex-col justify-center items-center bg-surface-2/50 text-center select-none">
+                      <span className="font-mono font-bold text-xs text-tx-primary">{slot.slotLabel}</span>
+                      <span className="font-mono text-[9px] text-muted mt-0.5">{slot.times}</span>
+                    </div>
+
+                    {/* Day Cells: Mon (1) to Sat (6) */}
+                    {[
+                      { name: 'Mon', key: 'Mon' },
+                      { name: 'Tue', key: 'Tue' },
+                      { name: 'Wed', key: 'Wed' },
+                      { name: 'Thu', key: 'Thu' },
+                      { name: 'Fri', key: 'Fri' },
+                      { name: 'Sat', key: 'Sat' },
+                    ].map((d) => {
+                      const matchedCourses = findCoursesForSlot(d.key, slot.periods);
+
+                      return (
+                        <div
+                          key={d.name}
+                          className="p-1.5 flex flex-col justify-start space-y-1 hover:bg-surface-2/30 transition-colors"
+                        >
+                          {matchedCourses.map((c) => (
+                            <div
+                              key={c.id}
+                              className="p-1.5 rounded-[var(--radius-control)] border text-left cursor-pointer transition-all hover:scale-[1.01] hover:shadow-subtle"
+                              style={{
+                                backgroundColor: 'var(--bg-surface-2)',
+                                borderColor: c.color ? `${c.color}50` : 'var(--border-subtle)',
+                                borderLeftWidth: '3px',
+                                borderLeftColor: c.color || 'var(--accent)',
+                              }}
+                              title={`${c.code}: ${c.title} (${c.schedule})`}
+                            >
+                              <div className="font-mono text-[10px] font-bold text-accent truncate">
+                                {c.code}
+                              </div>
+                              <div className="text-[11px] font-semibold text-tx-primary line-clamp-2 leading-snug mt-0.5">
+                                {c.title}
+                              </div>
+                              <div className="text-[9px] text-muted mt-0.5 flex items-center justify-between">
+                                <span className="truncate">{c.room || 'LMS'}</span>
+                                <span className="font-mono opacity-80">{slot.slotLabel}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Unscheduled & On-Demand Courses Section */}
+            <div className="p-3 rounded-[var(--radius-control)] border border-subtle bg-surface space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-tx-primary">
+                  On-Demand, Projects & Unscheduled Courses
+                </span>
+                <span className="text-[10px] text-muted font-mono">
+                  {
+                    courses
+                      .filter((c) => courseMatchesQuarter(c.term, selectedQuarter, selectedAcademicYear))
+                      .filter((c) => !c.schedule || c.schedule.includes('On-Demand') || c.schedule.includes('Project')).length
+                  }{' '}
+                  Course(s)
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                {courses
+                  .filter((c) => courseMatchesQuarter(c.term, selectedQuarter, selectedAcademicYear))
+                  .filter((c) => !c.schedule || c.schedule.includes('On-Demand') || c.schedule.includes('Project'))
+                  .map((c) => (
+                    <div
+                      key={c.id}
+                      className="p-2 rounded-[var(--radius-control)] bg-surface-2 border border-subtle flex items-start space-x-2"
+                    >
+                      <span
+                        className="w-2 h-2 rounded-full mt-1 flex-shrink-0"
+                        style={{ backgroundColor: c.color || 'var(--accent)' }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="font-mono text-[10px] font-bold text-accent">{c.code}</div>
+                        <div className="text-[11px] font-medium text-tx-primary truncate mt-0.5">{c.title}</div>
+                        <div className="text-[9px] text-muted font-mono mt-0.5">{c.term} · {c.schedule}</div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
             </div>
           </div>
         </div>
