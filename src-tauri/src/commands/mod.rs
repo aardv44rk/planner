@@ -318,6 +318,7 @@ pub struct CredentialStatus {
     pub has_username: bool,
     pub has_password: bool,
     pub has_totp: bool,
+    pub has_matrix: bool,
     pub session_cached: bool,
 }
 
@@ -326,14 +327,27 @@ pub async fn save_credentials(
     username: String,
     password: String,
     totp_seed: String,
+    matrix_card: Option<String>,
 ) -> Result<(), String> {
-    crate::auth::store_credentials(&username, &password, &totp_seed).map_err(|e| e.to_string())
+    crate::auth::store_credentials(
+        &username,
+        &password,
+        &totp_seed,
+        matrix_card.as_deref(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn save_matrix_card(matrix: String) -> Result<(), String> {
+    crate::auth::store_matrix_card(&matrix).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn get_credential_status(state: State<'_, Arc<AppState>>) -> Result<CredentialStatus, String> {
     let creds = crate::auth::retrieve_credentials().map_err(|e| e.to_string())?;
     let totp_seed = crate::auth::retrieve_totp_seed().unwrap_or(None);
+    let matrix_card = crate::auth::retrieve_matrix_card().unwrap_or(None);
     let session_cached = crate::lms::load_session(&state.config_dir)
         .map(|opt| opt.is_some())
         .unwrap_or(false);
@@ -342,13 +356,16 @@ pub async fn get_credential_status(state: State<'_, Arc<AppState>>) -> Result<Cr
     let has_password = creds.as_ref().map(|c| !c.password.is_empty()).unwrap_or(false);
     let has_totp = totp_seed.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
         || creds.as_ref().map(|c| !c.totp_seed.is_empty()).unwrap_or(false);
+    let has_matrix = matrix_card.as_ref().map(|m| !m.is_empty()).unwrap_or(false)
+        || creds.as_ref().map(|c| !c.matrix_card.is_empty()).unwrap_or(false);
 
     Ok(CredentialStatus {
-        configured: creds.is_some() && (has_username || has_totp),
+        configured: creds.is_some() && (has_username || has_totp || has_matrix),
         username: creds.as_ref().map(|c| c.username.clone()),
         has_username,
         has_password,
         has_totp,
+        has_matrix,
         session_cached,
     })
 }
@@ -367,6 +384,35 @@ pub async fn sync_lms(state: State<'_, Arc<AppState>>) -> Result<String, String>
 }
 
 #[tauri::command]
+pub async fn get_lms_sync_state(state: State<'_, Arc<AppState>>) -> Result<crate::models::LmsSyncState, String> {
+    let active_year = db::get_sync_meta(&state.db, "active_academic_year")
+        .await
+        .map_err(|e| e.to_string())?
+        .unwrap_or_default();
+    let active_quarter = db::get_sync_meta(&state.db, "active_quarter")
+        .await
+        .map_err(|e| e.to_string())?
+        .unwrap_or_default();
+    let last_synced_at = db::get_sync_meta(&state.db, "last_synced_at")
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(crate::models::LmsSyncState {
+        active_academic_year: active_year,
+        active_quarter,
+        last_synced_at,
+    })
+}
+
+#[tauri::command]
+pub async fn login_titech(state: State<'_, Arc<AppState>>) -> Result<String, String> {
+    crate::lms::perform_titech_login(&state.config_dir)
+        .await
+        .map(|_| "Successfully signed in to Tokyo Tech portal".to_string())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn get_courses(state: State<'_, Arc<AppState>>) -> Result<Vec<crate::models::Course>, String> {
     db::get_courses(&state.db).await.map_err(|e| e.to_string())
 }
@@ -377,9 +423,30 @@ pub async fn upload_assignment(
     file_path: String,
     assignment_id: String,
 ) -> Result<crate::lms::UploadResult, String> {
-    crate::lms::upload_assignment(&state.config_dir, &file_path, &assignment_id)
+    crate::lms::upload_assignment(&state.config_dir, &file_path, &assignment_id, Some(&state.db))
         .await
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn pick_assignment_file() -> Result<crate::models::PickedFileResult, String> {
+    let file = rfd::AsyncFileDialog::new()
+        .set_title("Select Assignment File to Submit")
+        .pick_file()
+        .await
+        .ok_or_else(|| "File selection was cancelled".to_string())?;
+
+    let path = file.path().to_string_lossy().to_string();
+    let metadata = tokio::fs::metadata(&file.path())
+        .await
+        .map_err(|e| format!("Failed to read file metadata: {}", e))?;
+    let name = file.file_name();
+
+    Ok(crate::models::PickedFileResult {
+        path,
+        name,
+        size: metadata.len(),
+    })
 }
 
 #[tauri::command]
@@ -394,7 +461,7 @@ pub async fn pick_and_upload_assignment(
         .ok_or_else(|| "File selection was cancelled".to_string())?;
 
     let file_path = file.path().to_string_lossy().to_string();
-    crate::lms::upload_assignment(&state.config_dir, &file_path, &assignment_id)
+    crate::lms::upload_assignment(&state.config_dir, &file_path, &assignment_id, Some(&state.db))
         .await
         .map_err(|e| e.to_string())
 }
@@ -418,5 +485,27 @@ pub async fn save_totp_seed(seed: String) -> Result<crate::auth::TotpCodeResult,
     let code_info = crate::auth::get_totp_code_info(&seed).map_err(|e| e.to_string())?;
     crate::auth::store_totp_seed(&seed).map_err(|e| e.to_string())?;
     Ok(code_info)
+}
+
+// Quick Notes Commands
+#[tauri::command]
+pub async fn get_quick_notes(state: State<'_, Arc<AppState>>) -> Result<Vec<crate::models::QuickNote>, String> {
+    db::get_all_quick_notes(&state.db).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn create_quick_note(
+    state: State<'_, Arc<AppState>>,
+    content: String,
+) -> Result<crate::models::QuickNote, String> {
+    db::create_quick_note(&state.db, &content).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_quick_note(
+    state: State<'_, Arc<AppState>>,
+    id: String,
+) -> Result<(), String> {
+    db::delete_quick_note(&state.db, &id).await.map_err(|e| e.to_string())
 }
 

@@ -3,6 +3,7 @@ pub mod vault;
 
 pub use totp::{generate_current_totp, get_totp_code_info, TotpCodeResult};
 pub use vault::{
-    delete_credentials, has_credentials, retrieve_credentials, retrieve_totp_seed,
-    store_credentials, store_totp_seed, UniversityCredentials,
+    delete_credentials, has_credentials, retrieve_credentials, retrieve_matrix_card,
+    retrieve_totp_seed, store_credentials, store_matrix_card, store_totp_seed,
+    UniversityCredentials,
 };

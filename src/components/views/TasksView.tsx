@@ -5,14 +5,11 @@ import {
   Plus,
   Trash2,
   FolderKanban,
-  Pin,
-  Check,
   Filter,
   ArrowUpDown,
   Calendar,
 } from 'lucide-react';
 import { useCommandCenterStore } from '../../stores/commandCenterStore';
-import { useLayoutStore } from '../../stores/layoutStore';
 import { TaskPriority } from '../../types';
 
 export const TasksView: React.FC = () => {
@@ -24,8 +21,6 @@ export const TasksView: React.FC = () => {
     selectedDate,
   } = useCommandCenterStore();
 
-  const { isWidgetPinned, toggleWidgetPin } = useLayoutStore();
-
   const [newTitle, setNewTitle] = useState('');
   const [selectedProject, setSelectedProject] = useState('LifeOS');
   const [selectedPriority, setSelectedPriority] = useState<TaskPriority>('medium');
@@ -34,9 +29,6 @@ export const TasksView: React.FC = () => {
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'created' | 'priority' | 'project'>('created');
   const [isAdding, setIsAdding] = useState(false);
-
-  const isTasksPinned = isWidgetPinned('widget-tasks');
-  const isProjectsPinned = isWidgetPinned('widget-projects');
 
   // Compute Project statistics
   const projectStats = tasks.reduce<Record<string, { total: number; completed: number }>>(
@@ -151,54 +143,8 @@ export const TasksView: React.FC = () => {
           </div>
         </div>
 
-        {/* Pin to Home Buttons & Add Task button */}
+        {/* Add Task button */}
         <div className="flex items-center space-x-2">
-          {/* Pin Tasks */}
-          <button
-            onClick={() => toggleWidgetPin('widget-tasks')}
-            className={`flex items-center space-x-1.5 px-2.5 py-1 text-xs rounded border transition-colors ${
-              isTasksPinned
-                ? 'bg-accent/10 border-accent/40 text-accent font-medium'
-                : 'bg-surface border-subtle text-tx-muted hover:text-tx-primary hover:bg-elevated'
-            }`}
-            title="Toggle Tasks widget on Home dashboard"
-          >
-            {isTasksPinned ? (
-              <>
-                <Check className="w-3 h-3 text-accent" />
-                <span>Tasks Pinned ✓</span>
-              </>
-            ) : (
-              <>
-                <Pin className="w-3 h-3" />
-                <span>Pin Tasks to Home</span>
-              </>
-            )}
-          </button>
-
-          {/* Pin Projects */}
-          <button
-            onClick={() => toggleWidgetPin('widget-projects')}
-            className={`flex items-center space-x-1.5 px-2.5 py-1 text-xs rounded border transition-colors ${
-              isProjectsPinned
-                ? 'bg-accent/10 border-accent/40 text-accent font-medium'
-                : 'bg-surface border-subtle text-tx-muted hover:text-tx-primary hover:bg-elevated'
-            }`}
-            title="Toggle Projects widget on Home dashboard"
-          >
-            {isProjectsPinned ? (
-              <>
-                <Check className="w-3 h-3 text-accent" />
-                <span>Projects Pinned ✓</span>
-              </>
-            ) : (
-              <>
-                <Pin className="w-3 h-3" />
-                <span>Pin Projects to Home</span>
-              </>
-            )}
-          </button>
-
           <button
             onClick={() => setIsAdding(!isAdding)}
             className="flex items-center space-x-1.5 px-3 py-1 rounded bg-accent text-white text-xs font-medium hover:opacity-90 shadow-xs transition-opacity"

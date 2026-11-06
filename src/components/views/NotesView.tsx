@@ -7,11 +7,9 @@ import {
   RefreshCw,
   Plus,
   Trash2,
-  Pin,
   Clock,
 } from 'lucide-react';
 import { useCommandCenterStore } from '../../stores/commandCenterStore';
-import { useLayoutStore } from '../../stores/layoutStore';
 
 export const NotesView: React.FC = () => {
   const {
@@ -20,25 +18,18 @@ export const NotesView: React.FC = () => {
     selectedDate,
     setSelectedDate,
     notesHistory,
+    quickNotes,
+    createQuickNote,
+    deleteQuickNote,
   } = useCommandCenterStore();
-
-  const { isWidgetPinned, toggleWidgetPin } = useLayoutStore();
 
   const [content, setContent] = useState('');
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Quick notes pins
-  const [pins, setPins] = useState<string[]>([
-    'Review SQLite WAL mode checkpoint',
-    'Verify zero scroll on Bento grid',
-    'Obsidian text-first aesthetic',
-  ]);
+  // Quick notes pins state
   const [newPin, setNewPin] = useState('');
   const [isAddingPin, setIsAddingPin] = useState(false);
-
-  const isScratchpadPinned = isWidgetPinned('widget-scratchpad');
-  const isQuickNotesPinned = isWidgetPinned('widget-quick-notes');
 
   useEffect(() => {
     if (dailyNote) {
@@ -63,16 +54,16 @@ export const NotesView: React.FC = () => {
     }, 500);
   };
 
-  const handleAddPin = (e: React.FormEvent) => {
+  const handleAddPin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPin.trim()) return;
-    setPins([newPin.trim(), ...pins]);
+    await createQuickNote(newPin.trim());
     setNewPin('');
     setIsAddingPin(false);
   };
 
-  const handleRemovePin = (idx: number) => {
-    setPins(pins.filter((_, i) => i !== idx));
+  const handleRemovePin = async (id: string) => {
+    await deleteQuickNote(id);
   };
 
   const words = content.trim() ? content.trim().split(/\s+/).length : 0;
@@ -102,9 +93,8 @@ export const NotesView: React.FC = () => {
           </div>
         </div>
 
-        {/* Pin to Home Buttons & Auto-Save indicator */}
+        {/* Auto-Save indicator */}
         <div className="flex items-center space-x-2">
-          {/* Save Status Indicator */}
           <div className="flex items-center space-x-1.5 text-xs text-tx-muted px-2 py-1 rounded bg-canvas border border-subtle font-mono">
             {saveStatus === 'saving' ? (
               <>
@@ -120,52 +110,6 @@ export const NotesView: React.FC = () => {
             <span className="text-subtle">·</span>
             <span>{words} words</span>
           </div>
-
-          {/* Pin Scratchpad */}
-          <button
-            onClick={() => toggleWidgetPin('widget-scratchpad')}
-            className={`flex items-center space-x-1.5 px-2.5 py-1 text-xs rounded border transition-colors ${
-              isScratchpadPinned
-                ? 'bg-accent/10 border-accent/40 text-accent font-medium'
-                : 'bg-surface border-subtle text-tx-muted hover:text-tx-primary hover:bg-elevated'
-            }`}
-            title="Toggle Scratchpad widget on Home dashboard"
-          >
-            {isScratchpadPinned ? (
-              <>
-                <Check className="w-3 h-3 text-accent" />
-                <span>Scratchpad Pinned ✓</span>
-              </>
-            ) : (
-              <>
-                <Pin className="w-3 h-3" />
-                <span>Pin Scratchpad to Home</span>
-              </>
-            )}
-          </button>
-
-          {/* Pin Quick Notes */}
-          <button
-            onClick={() => toggleWidgetPin('widget-quick-notes')}
-            className={`flex items-center space-x-1.5 px-2.5 py-1 text-xs rounded border transition-colors ${
-              isQuickNotesPinned
-                ? 'bg-accent/10 border-accent/40 text-accent font-medium'
-                : 'bg-surface border-subtle text-tx-muted hover:text-tx-primary hover:bg-elevated'
-            }`}
-            title="Toggle Quick Notes widget on Home dashboard"
-          >
-            {isQuickNotesPinned ? (
-              <>
-                <Check className="w-3 h-3 text-accent" />
-                <span>Quick Notes Pinned ✓</span>
-              </>
-            ) : (
-              <>
-                <Pin className="w-3 h-3" />
-                <span>Pin Quick Notes to Home</span>
-              </>
-            )}
-          </button>
         </div>
       </div>
 
@@ -256,7 +200,7 @@ export const NotesView: React.FC = () => {
               <div className="flex items-center space-x-1.5">
                 <Bookmark className="w-3.5 h-3.5 text-accent" />
                 <h4 className="text-xs font-semibold text-tx-primary">Quick Notes & Bookmarks</h4>
-                <span className="text-[10px] text-tx-muted font-mono">({pins.length})</span>
+                <span className="text-[10px] text-tx-muted font-mono">({quickNotes.length})</span>
               </div>
 
               <div className="flex items-center space-x-1">
@@ -290,23 +234,29 @@ export const NotesView: React.FC = () => {
             )}
 
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar divide-y divide-subtle/30 pr-1">
-              {pins.map((pinText, idx) => (
-                <div
-                  key={idx}
-                  className="group/pin flex items-center justify-between py-1.5 px-1 hover:bg-surface/80 rounded transition-colors"
-                >
-                  <span className="text-xs text-tx-primary truncate pr-2">
-                    • {pinText}
-                  </span>
-                  <button
-                    onClick={() => handleRemovePin(idx)}
-                    className="opacity-0 group-hover/pin:opacity-100 p-0.5 text-tx-muted hover:text-red-500 rounded transition-opacity"
-                    title="Remove"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+              {quickNotes.length === 0 ? (
+                <div className="text-xs text-tx-muted py-4 text-center">
+                  No quick notes yet. Add one above!
                 </div>
-              ))}
+              ) : (
+                quickNotes.map((note) => (
+                  <div
+                    key={note.id}
+                    className="group/pin flex items-center justify-between py-1.5 px-1 hover:bg-surface/80 rounded transition-colors"
+                  >
+                    <span className="text-xs text-tx-primary truncate pr-2">
+                      • {note.content}
+                    </span>
+                    <button
+                      onClick={() => handleRemovePin(note.id)}
+                      className="opacity-0 group-hover/pin:opacity-100 p-0.5 text-tx-muted hover:text-red-500 rounded transition-opacity"
+                      title="Remove"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

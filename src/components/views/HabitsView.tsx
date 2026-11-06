@@ -9,10 +9,8 @@ import {
   AlertCircle,
   Plus,
   Check,
-  Pin,
 } from 'lucide-react';
 import { useCommandCenterStore } from '../../stores/commandCenterStore';
-import { useLayoutStore } from '../../stores/layoutStore';
 
 export const HabitsView: React.FC = () => {
   const {
@@ -25,14 +23,8 @@ export const HabitsView: React.FC = () => {
     selectedDate,
   } = useCommandCenterStore();
 
-  const { isWidgetPinned, toggleWidgetPin } = useLayoutStore();
-
   const [isAddingHabit, setIsAddingHabit] = useState(false);
   const [newHabitName, setNewHabitName] = useState('');
-
-  const isHabitsPinned = isWidgetPinned('widget-habit-matrix');
-  const isTimeAllocPinned = isWidgetPinned('widget-time-allocation');
-  const isKpisPinned = isWidgetPinned('widget-kpis');
 
   const daysLabel = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -87,78 +79,6 @@ export const HabitsView: React.FC = () => {
               Habit tracking grid, time allocation metrics, and desktop activity analytics.
             </p>
           </div>
-        </div>
-
-        {/* Pin to Home Buttons */}
-        <div className="flex items-center space-x-2">
-          {/* Pin Habit Matrix */}
-          <button
-            onClick={() => toggleWidgetPin('widget-habit-matrix')}
-            className={`flex items-center space-x-1.5 px-2.5 py-1 text-xs rounded border transition-colors ${
-              isHabitsPinned
-                ? 'bg-accent/10 border-accent/40 text-accent font-medium'
-                : 'bg-surface border-subtle text-tx-muted hover:text-tx-primary hover:bg-elevated'
-            }`}
-            title="Toggle Habit Matrix on Home dashboard"
-          >
-            {isHabitsPinned ? (
-              <>
-                <Check className="w-3 h-3 text-accent" />
-                <span>Habits Pinned ✓</span>
-              </>
-            ) : (
-              <>
-                <Pin className="w-3 h-3" />
-                <span>Pin Habits to Home</span>
-              </>
-            )}
-          </button>
-
-          {/* Pin Time Allocation */}
-          <button
-            onClick={() => toggleWidgetPin('widget-time-allocation')}
-            className={`flex items-center space-x-1.5 px-2.5 py-1 text-xs rounded border transition-colors ${
-              isTimeAllocPinned
-                ? 'bg-accent/10 border-accent/40 text-accent font-medium'
-                : 'bg-surface border-subtle text-tx-muted hover:text-tx-primary hover:bg-elevated'
-            }`}
-            title="Toggle Time Allocation on Home dashboard"
-          >
-            {isTimeAllocPinned ? (
-              <>
-                <Check className="w-3 h-3 text-accent" />
-                <span>Allocation Pinned ✓</span>
-              </>
-            ) : (
-              <>
-                <Pin className="w-3 h-3" />
-                <span>Pin Allocation to Home</span>
-              </>
-            )}
-          </button>
-
-          {/* Pin KPIs */}
-          <button
-            onClick={() => toggleWidgetPin('widget-kpis')}
-            className={`flex items-center space-x-1.5 px-2.5 py-1 text-xs rounded border transition-colors ${
-              isKpisPinned
-                ? 'bg-accent/10 border-accent/40 text-accent font-medium'
-                : 'bg-surface border-subtle text-tx-muted hover:text-tx-primary hover:bg-elevated'
-            }`}
-            title="Toggle KPI strip on Home dashboard"
-          >
-            {isKpisPinned ? (
-              <>
-                <Check className="w-3 h-3 text-accent" />
-                <span>KPIs Pinned ✓</span>
-              </>
-            ) : (
-              <>
-                <Pin className="w-3 h-3" />
-                <span>Pin KPIs to Home</span>
-              </>
-            )}
-          </button>
         </div>
       </div>
 

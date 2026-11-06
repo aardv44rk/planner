@@ -153,7 +153,7 @@ export const Sidebar: React.FC = () => {
           <nav className="grid gap-1 w-full" aria-label="Main Navigation">
             {navTabs.map((tab) => {
               const Icon = tab.icon;
-              const isActive = activeTab === tab.id || (activeTab === 'home' && tab.id === 'today');
+              const isActive = activeTab === tab.id;
               return (
                 <button
                   type="button"
@@ -240,7 +240,7 @@ export const Sidebar: React.FC = () => {
           {/* Contextual Sub-navigation Content */}
           <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-3 space-y-3">
             {/* SUB-NAV 1: TODAY (Daily Focus & Portal Info) */}
-            {(activeTab === 'today' || activeTab === 'home') && (
+            {activeTab === 'today' && (
               <div className="space-y-3">
                 <div className="space-y-2">
                   <span className="text-[11px] uppercase tracking-wider font-semibold text-muted block">

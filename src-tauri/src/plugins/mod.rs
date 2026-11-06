@@ -88,13 +88,94 @@ impl WindowTrackerPlugin {
 
     #[cfg(target_os = "linux")]
     fn get_active_window_info() -> Option<(String, String)> {
-        // Linux fallback using xdotool / proc if available
-        Some(("Workspace".to_string(), "Linux Desktop Session".to_string()))
+        // Attempt xdotool first (X11)
+        if let Ok(output) = std::process::Command::new("xdotool")
+            .args(["getactivewindow", "getwindowname"])
+            .output()
+        {
+            if output.status.success() {
+                let title = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !title.is_empty() {
+                    let app = if let Ok(pid_output) = std::process::Command::new("xdotool")
+                        .args(["getactivewindow", "getwindowpid"])
+                        .output()
+                    {
+                        if pid_output.status.success() {
+                            let pid_str = String::from_utf8_lossy(&pid_output.stdout).trim().to_string();
+                            if let Ok(comm) = std::fs::read_to_string(format!("/proc/{}/comm", pid_str)) {
+                                comm.trim().to_string()
+                            } else {
+                                "Linux App".to_string()
+                            }
+                        } else {
+                            "Linux App".to_string()
+                        }
+                    } else {
+                        "Linux App".to_string()
+                    };
+                    return Some((app, title));
+                }
+            }
+        }
+
+        // Attempt hyprctl for Wayland / Hyprland
+        if let Ok(output) = std::process::Command::new("hyprctl")
+            .args(["activewindow", "-j"])
+            .output()
+        {
+            if output.status.success() {
+                if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
+                    let class = json.get("class").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let title = json.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    if !class.is_empty() || !title.is_empty() {
+                        let app = if class.is_empty() { "Wayland App".to_string() } else { class };
+                        return Some((app, title));
+                    }
+                }
+            }
+        }
+
+        // Attempt xprop as secondary X11 check
+        if let Ok(output) = std::process::Command::new("xprop")
+            .args(["-root", "_NET_ACTIVE_WINDOW"])
+            .output()
+        {
+            if output.status.success() {
+                let out = String::from_utf8_lossy(&output.stdout);
+                if let Some(id_str) = out.split_whitespace().last() {
+                    if let Ok(win_out) = std::process::Command::new("xprop")
+                        .args(["-id", id_str, "WM_NAME", "WM_CLASS"])
+                        .output()
+                    {
+                        if win_out.status.success() {
+                            let text = String::from_utf8_lossy(&win_out.stdout);
+                            let title = text.lines()
+                                .find(|l| l.starts_with("WM_NAME"))
+                                .and_then(|l| l.split('=').nth(1))
+                                .map(|s| s.trim().trim_matches('"').to_string())
+                                .unwrap_or_else(|| "Window".to_string());
+                            let app = text.lines()
+                                .find(|l| l.starts_with("WM_CLASS"))
+                                .and_then(|l| l.split('=').nth(1))
+                                .and_then(|s| s.split(',').last())
+                                .map(|s| s.trim().trim_matches('"').to_string())
+                                .unwrap_or_else(|| "Linux App".to_string());
+                            if !title.is_empty() {
+                                return Some((app, title));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Return None if no active window tool succeeds so app_activity_log is never polluted with fake entries
+        None
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     fn get_active_window_info() -> Option<(String, String)> {
-        Some(("Desktop".to_string(), "Active Session".to_string()))
+        None
     }
 }
 

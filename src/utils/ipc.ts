@@ -10,6 +10,9 @@ import {
   DashboardMetrics,
   HabitDay,
   LayoutConfig,
+  LmsSyncState,
+  PickedFileResult,
+  QuickNote,
   ScheduleBlock,
   Task,
   TimeAllocationItem,
@@ -68,6 +71,15 @@ let memoryHabits: HabitDay[] = [
   { id: 'h4', habit_name: 'Read 20 pages', days: [true, true, false, true, true, true, true] },
   { id: 'h5', habit_name: 'Exercise / Walk', days: [true, false, true, true, false, true, false] },
 ];
+let memoryQuickNotes: QuickNote[] = [
+  { id: 'qn-1', content: 'LMS sync state: check action events', created_at: new Date().toISOString() },
+  { id: 'qn-2', content: 'Tokyo Tech matrix authentication verified', created_at: new Date().toISOString() },
+];
+let memoryLmsSyncState: LmsSyncState = {
+  active_academic_year: '2026',
+  active_quarter: '4Q',
+  last_synced_at: null,
+};
 
 export const api = {
   // Layout
@@ -254,20 +266,61 @@ export const api = {
   },
 
   // University LMS & Secure Vault Auth
-  saveCredentials: async (username?: string, password?: string, totpSeed?: string): Promise<void> => {
+  saveCredentials: async (
+    username?: string,
+    password?: string,
+    totpSeed?: string,
+    matrixCard?: string
+  ): Promise<void> => {
     if (isTauri()) {
       return await invoke<void>('save_credentials', {
         username: username || '',
         password: password || '',
         totpSeed: totpSeed || '',
+        matrixCard: matrixCard || '',
       });
     }
+  },
+  saveMatrixCard: async (matrix: string): Promise<void> => {
+    if (isTauri()) {
+      return await invoke<void>('save_matrix_card', { matrix });
+    }
+  },
+  loginTitech: async (): Promise<string> => {
+    if (isTauri()) {
+      return await invoke<string>('login_titech');
+    }
+    return 'Tokyo Tech portal login successful (Preview mode)';
   },
   getCredentialStatus: async (): Promise<CredentialStatus> => {
     if (isTauri()) {
       return await invoke<CredentialStatus>('get_credential_status');
     }
-    return { configured: false, username: null, has_username: false, has_password: false, has_totp: false, session_cached: false };
+    return {
+      configured: false,
+      username: null,
+      has_username: false,
+      has_password: false,
+      has_totp: false,
+      has_matrix: false,
+      session_cached: false,
+    };
+  },
+  getLmsSyncState: async (): Promise<LmsSyncState> => {
+    if (isTauri()) {
+      return await invoke<LmsSyncState>('get_lms_sync_state');
+    }
+    return memoryLmsSyncState;
+  },
+  pickAssignmentFile: async (): Promise<PickedFileResult> => {
+    if (isTauri()) {
+      return await invoke<PickedFileResult>('pick_assignment_file');
+    }
+    return {
+      path: '/mock/path/submission.pdf',
+      name: 'submission.pdf',
+      size: 1024 * 1024,
+    };
   },
   pickAndUploadAssignment: async (assignmentId: string): Promise<UploadResult> => {
     if (isTauri()) {
@@ -325,6 +378,32 @@ export const api = {
       return await invoke<TotpCodeResult>('save_totp_seed', { seed });
     }
     return { code: '123456', seconds_remaining: 30 };
+  },
+
+  // Quick Notes (SQLite persistence)
+  getQuickNotes: async (): Promise<QuickNote[]> => {
+    if (isTauri()) {
+      return await invoke<QuickNote[]>('get_quick_notes');
+    }
+    return [...memoryQuickNotes];
+  },
+  createQuickNote: async (content: string): Promise<QuickNote> => {
+    if (isTauri()) {
+      return await invoke<QuickNote>('create_quick_note', { content });
+    }
+    const newNote: QuickNote = {
+      id: Math.random().toString(36).substring(2, 9),
+      content,
+      created_at: new Date().toISOString(),
+    };
+    memoryQuickNotes = [newNote, ...memoryQuickNotes];
+    return newNote;
+  },
+  deleteQuickNote: async (id: string): Promise<void> => {
+    if (isTauri()) {
+      return await invoke<void>('delete_quick_note', { id });
+    }
+    memoryQuickNotes = memoryQuickNotes.filter((n) => n.id !== id);
   },
 
   // Event listener

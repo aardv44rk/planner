@@ -5,12 +5,60 @@ use serde::{Deserialize, Serialize};
 const SERVICE_NAME: &str = "lifeos-command-center";
 const ENTRY_ACCOUNT: &str = "science_tokyo_sso";
 const ENTRY_TOTP: &str = "science_tokyo_totp";
+const ENTRY_MATRIX: &str = "tokyo_tech_matrix";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UniversityCredentials {
     pub username: String,
     pub password: String,
     pub totp_seed: String,
+    #[serde(default)]
+    pub matrix_card: String,
+}
+
+/// Securely stores the 70-character Tokyo Tech Matrix Card in an isolated OS Keyring entry.
+pub fn store_matrix_card(matrix: &str) -> Result<()> {
+    let clean_matrix: String = matrix.chars().filter(|c| !c.is_whitespace()).collect();
+    if clean_matrix.is_empty() {
+        return Err(anyhow!("Matrix card cannot be empty"));
+    }
+
+    let entry = Entry::new(SERVICE_NAME, ENTRY_MATRIX)
+        .map_err(|e| anyhow!("Failed to access OS Keyring service: {}", e))?;
+
+    if let Err(e) = entry.set_password(&clean_matrix) {
+        return Err(anyhow!("Failed to write Matrix card to OS Keyring: {}", e));
+    }
+
+    // Also update existing credentials bundle if present
+    if let Ok(Some(mut creds)) = retrieve_credentials() {
+        creds.matrix_card = clean_matrix;
+        let _ = save_credentials_bundle(&creds);
+    }
+
+    log::info!("Tokyo Tech Matrix card securely written to OS Keyring");
+    Ok(())
+}
+
+/// Retrieves stored Tokyo Tech Matrix card from dedicated entry or credentials bundle.
+pub fn retrieve_matrix_card() -> Result<Option<String>> {
+    if let Ok(entry) = Entry::new(SERVICE_NAME, ENTRY_MATRIX) {
+        if let Ok(matrix) = entry.get_password() {
+            let clean: String = matrix.chars().filter(|c| !c.is_whitespace()).collect();
+            if !clean.is_empty() {
+                return Ok(Some(clean));
+            }
+        }
+    }
+
+    if let Ok(Some(creds)) = retrieve_credentials() {
+        let clean: String = creds.matrix_card.chars().filter(|c| !c.is_whitespace()).collect();
+        if !clean.is_empty() {
+            return Ok(Some(clean));
+        }
+    }
+
+    Ok(None)
 }
 
 /// Securely stores the TOTP seed in an isolated OS Keyring entry.
@@ -78,10 +126,16 @@ fn save_credentials_bundle(creds: &UniversityCredentials) -> Result<()> {
 
 /// Securely stores credentials in the host OS credential manager.
 /// Plaintext secrets are NEVER written to disk or the SQLite database.
-/// Existing non-empty fields (especially TOTP seed) are ALWAYS preserved if not provided.
-pub fn store_credentials(username: &str, password: &str, totp_seed: &str) -> Result<()> {
+/// Existing non-empty fields (especially TOTP seed & Matrix card) are ALWAYS preserved if not provided.
+pub fn store_credentials(
+    username: &str,
+    password: &str,
+    totp_seed: &str,
+    matrix_card: Option<&str>,
+) -> Result<()> {
     let existing = retrieve_credentials().unwrap_or(None);
     let existing_totp = retrieve_totp_seed().unwrap_or(None);
+    let existing_matrix = retrieve_matrix_card().unwrap_or(None);
 
     let final_username = if !username.trim().is_empty() {
         username.trim().to_string()
@@ -112,10 +166,31 @@ pub fn store_credentials(username: &str, password: &str, totp_seed: &str) -> Res
         String::new()
     };
 
+    let final_matrix = if let Some(m) = matrix_card {
+        let clean: String = m.chars().filter(|c| !c.is_whitespace()).collect();
+        if !clean.is_empty() {
+            let _ = store_matrix_card(&clean);
+            clean
+        } else if let Some(ref em) = existing_matrix {
+            em.clone()
+        } else if let Some(ref e) = existing {
+            e.matrix_card.clone()
+        } else {
+            String::new()
+        }
+    } else if let Some(ref em) = existing_matrix {
+        em.clone()
+    } else if let Some(ref e) = existing {
+        e.matrix_card.clone()
+    } else {
+        String::new()
+    };
+
     let creds = UniversityCredentials {
         username: final_username,
         password: final_password,
         totp_seed: final_totp_seed,
+        matrix_card: final_matrix,
     };
 
     save_credentials_bundle(&creds)?;
@@ -152,6 +227,28 @@ pub fn retrieve_credentials() -> Result<Option<UniversityCredentials>> {
                         username: String::new(),
                         password: String::new(),
                         totp_seed: clean.to_string(),
+                        matrix_card: String::new(),
+                    });
+                }
+            }
+        }
+    }
+
+    // If matrix_card is empty in bundle, check dedicated Matrix entry
+    if let Ok(entry_matrix) = Entry::new(SERVICE_NAME, ENTRY_MATRIX) {
+        if let Ok(mat) = entry_matrix.get_password() {
+            let clean: String = mat.chars().filter(|c| !c.is_whitespace()).collect();
+            if !clean.is_empty() {
+                if let Some(ref mut c) = creds {
+                    if c.matrix_card.is_empty() {
+                        c.matrix_card = clean;
+                    }
+                } else {
+                    creds = Some(UniversityCredentials {
+                        username: String::new(),
+                        password: String::new(),
+                        totp_seed: String::new(),
+                        matrix_card: clean,
                     });
                 }
             }
@@ -172,6 +269,9 @@ pub fn delete_credentials() -> Result<()> {
         let _ = entry.delete_credential();
     }
     if let Ok(entry) = Entry::new(SERVICE_NAME, ENTRY_TOTP) {
+        let _ = entry.delete_credential();
+    }
+    if let Ok(entry) = Entry::new(SERVICE_NAME, ENTRY_MATRIX) {
         let _ = entry.delete_credential();
     }
     log::info!("University credentials removed from OS Keyring");

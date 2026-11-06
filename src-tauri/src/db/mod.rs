@@ -102,12 +102,25 @@ pub async fn init_db(config_dir: &Path) -> Result<SqlitePool, sqlx::Error> {
             FOREIGN KEY (habit_id) REFERENCES habits(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS sync_metadata (
+            key TEXT PRIMARY KEY NOT NULL,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS quick_notes (
+            id TEXT PRIMARY KEY NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
         CREATE INDEX IF NOT EXISTS idx_tasks_completed ON tasks(completed);
         CREATE INDEX IF NOT EXISTS idx_schedule_blocks_date ON schedule_blocks(date);
         CREATE INDEX IF NOT EXISTS idx_app_activity_recorded_date ON app_activity_log(recorded_date);
         CREATE INDEX IF NOT EXISTS idx_habit_completions_date ON habit_completions(date);
         CREATE INDEX IF NOT EXISTS idx_assignments_course_id ON assignments(course_id);
+        CREATE INDEX IF NOT EXISTS idx_quick_notes_created_at ON quick_notes(created_at);
         "#,
     )
     .execute(&pool)
@@ -259,6 +272,29 @@ async fn seed_if_empty(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             sqlx::query("INSERT OR IGNORE INTO habit_completions (habit_id, date, completed) VALUES (?, ?, 1)")
                 .bind(&habit_id)
                 .bind(&today)
+                .execute(pool)
+                .await?;
+        }
+    }
+
+    // Seed quick notes if empty
+    let qn_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quick_notes")
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+
+    if qn_count == 0 {
+        let starter_notes = [
+            "Review SQLite WAL mode checkpoint",
+            "Verify zero scroll on Bento grid",
+            "Obsidian text-first aesthetic",
+        ];
+        for note in starter_notes {
+            let note_id = Uuid::new_v4().to_string();
+            sqlx::query("INSERT INTO quick_notes (id, content, created_at) VALUES (?, ?, ?)")
+                .bind(&note_id)
+                .bind(note)
+                .bind(&now_iso)
                 .execute(pool)
                 .await?;
         }
@@ -756,4 +792,69 @@ pub async fn get_courses(pool: &SqlitePool) -> Result<Vec<Course>, sqlx::Error> 
 
     Ok(courses)
 }
+
+// ==========================================
+// Sync Metadata & Quick Notes Functions
+// ==========================================
+
+pub async fn set_sync_meta(pool: &SqlitePool, key: &str, value: &str) -> Result<(), sqlx::Error> {
+    let now = chrono::Local::now().to_rfc3339();
+    sqlx::query(
+        r#"
+        INSERT INTO sync_metadata (key, value, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at
+        "#
+    )
+    .bind(key)
+    .bind(value)
+    .bind(&now)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn get_sync_meta(pool: &SqlitePool, key: &str) -> Result<Option<String>, sqlx::Error> {
+    let res: Option<(String,)> = sqlx::query_as("SELECT value FROM sync_metadata WHERE key = ?")
+        .bind(key)
+        .fetch_optional(pool)
+        .await?;
+    Ok(res.map(|(v,)| v))
+}
+
+pub async fn get_all_quick_notes(pool: &SqlitePool) -> Result<Vec<crate::models::QuickNote>, sqlx::Error> {
+    sqlx::query_as::<_, crate::models::QuickNote>(
+        "SELECT id, content, created_at FROM quick_notes ORDER BY created_at DESC"
+    )
+    .fetch_all(pool)
+    .await
+}
+
+pub async fn create_quick_note(pool: &SqlitePool, content: &str) -> Result<crate::models::QuickNote, sqlx::Error> {
+    let id = Uuid::new_v4().to_string();
+    let now = chrono::Local::now().to_rfc3339();
+    sqlx::query("INSERT INTO quick_notes (id, content, created_at) VALUES (?, ?, ?)")
+        .bind(&id)
+        .bind(content)
+        .bind(&now)
+        .execute(pool)
+        .await?;
+
+    Ok(crate::models::QuickNote {
+        id,
+        content: content.to_string(),
+        created_at: now,
+    })
+}
+
+pub async fn delete_quick_note(pool: &SqlitePool, id: &str) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM quick_notes WHERE id = ?")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 

@@ -212,6 +212,27 @@ pub struct HabitDay {
     pub days: Vec<bool>, // 7 days (e.g. Mon-Sun)
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct QuickNote {
+    pub id: String,
+    pub content: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LmsSyncState {
+    pub active_academic_year: String,
+    pub active_quarter: String,
+    pub last_synced_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PickedFileResult {
+    pub path: String,
+    pub name: String,
+    pub size: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActivitySummary {
     pub total_focus_secs: i64,

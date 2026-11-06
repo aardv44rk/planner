@@ -7,14 +7,17 @@ use reqwest::{Client, StatusCode};
 use reqwest_cookie_store::{CookieStore, CookieStoreMutex};
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
 use url::Url;
 
-use crate::auth::{generate_current_totp, retrieve_credentials};
+use crate::auth::{generate_current_totp, get_totp_code_info, retrieve_credentials};
 
 pub const LMS_BASE: &str = "https://lms.s.isct.ac.jp/2025";
 pub const LMS_MY_PAGE: &str = "https://lms.s.isct.ac.jp/2025/my/";
 pub const SCIENCE_PORTAL: &str = "https://isct.ex-tic.com/idm/user/portal/";
 pub const EXTIC_SECOND_FACTOR: &str = "/auth/session/second_factor";
+pub const GETACCESS_START: &str = "https://portal.nap.gsic.titech.ac.jp/GetAccess/ResourceList?lang=ja";
+pub const KYOMU_ENTRY: &str = "https://kyomu0.gakumu.titech.ac.jp/Titech/Default.aspx";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredCookie {
@@ -195,15 +198,39 @@ pub async fn perform_sso_login(config_dir: &Path) -> Result<(Client, Arc<CookieS
         .await
         .map_err(|e| anyhow!("Failed to read authentication response: {}", e))?;
 
+    // Step 2b: If not already at MFA or SAML, navigate explicitly to EXTIC_SECOND_FACTOR as in isct-companion
+    let has_totp_form = current_html.contains("totp-form") || current_html.contains("name=\"totp\"");
+    let has_saml = current_html.contains("SAMLResponse") || current_html.contains("SAMLRequest");
+    let is_already_logged_in = current_html.contains("login/logout.php");
+
+    if !has_totp_form && !has_saml && !is_already_logged_in {
+        let second_factor_url = current_url
+            .join(EXTIC_SECOND_FACTOR)
+            .unwrap_or_else(|_| Url::parse("https://isct.ex-tic.com/auth/session/second_factor").unwrap());
+        log::info!("Navigating explicitly to Extic second factor: {}", second_factor_url);
+        if let Ok(resp) = client.get(second_factor_url).send().await {
+            current_url = resp.url().clone();
+            current_html = resp.text().await.unwrap_or_default();
+        }
+    }
+
     // Step 3 & 4: Multi-Factor Authentication (TOTP)
     let is_mfa = current_url.path().contains("second_factor")
         || current_html.contains("totp-form")
         || current_html.contains("name=\"totp\"");
 
     if is_mfa {
-        log::info!("MFA challenge detected. Generating native TOTP code...");
+        log::info!("MFA challenge detected. Checking TOTP window timing...");
         if creds.totp_seed.is_empty() {
             return Err(anyhow!("University portal requires Multi-Factor Authentication (TOTP), but no TOTP seed was provided in Settings."));
+        }
+
+        // Window boundary check: if <= 2s remaining, wait for next window to avoid race condition
+        let code_info = get_totp_code_info(&creds.totp_seed)
+            .map_err(|e| anyhow!("Failed to inspect TOTP timing: {}", e))?;
+        if code_info.seconds_remaining <= 2 {
+            log::info!("TOTP window boundary detected ({}s remaining). Sleeping until next 30s window...", code_info.seconds_remaining);
+            tokio::time::sleep(std::time::Duration::from_secs(code_info.seconds_remaining + 1)).await;
         }
 
         let totp_code = generate_current_totp(&creds.totp_seed)
@@ -237,9 +264,11 @@ pub async fn perform_sso_login(config_dir: &Path) -> Result<(Client, Arc<CookieS
             .map_err(|e| anyhow!("Failed to read MFA response: {}", e))?;
     }
 
-    // Step 5: Follow SAML Auto-submit Form (if present)
-    if current_html.contains("SAMLResponse") || current_html.contains("SAMLRequest") {
-        log::info!("SAML assertion detected. Submitting SAMLResponse handshake...");
+    // Step 5: Follow SAML Auto-submit Form (loop up to 4 times)
+    let mut saml_rounds = 0;
+    while (current_html.contains("SAMLResponse") || current_html.contains("SAMLRequest")) && saml_rounds < 4 {
+        saml_rounds += 1;
+        log::info!("SAML assertion detected (round {}). Submitting SAML handshake...", saml_rounds);
         let (saml_action, saml_fields) = parse_saml_form(&current_html, &current_url)?;
 
         let saml_resp = client
@@ -249,6 +278,7 @@ pub async fn perform_sso_login(config_dir: &Path) -> Result<(Client, Arc<CookieS
             .await
             .map_err(|e| anyhow!("Failed to submit SAMLResponse assertion: {}", e))?;
 
+        current_url = saml_resp.url().clone();
         current_html = saml_resp
             .text()
             .await
@@ -264,7 +294,7 @@ pub async fn perform_sso_login(config_dir: &Path) -> Result<(Client, Arc<CookieS
 
     let check_html = dashboard_resp.text().await.unwrap_or_default();
     if !check_html.contains("login/logout.php") && !current_html.contains("login/logout.php") {
-        log::warn!("Dashboard does not explicitly contain logout link, but checking cookies...");
+        return Err(anyhow!("SSO login verification failed: Moodle logout link was not detected on landing dashboard."));
     }
 
     log::info!("SSO handshake completed successfully! Persisting authenticated cookie store...");
@@ -375,13 +405,58 @@ fn extract_form_data(
     };
 
     let mut fields: Vec<(String, String)> = Vec::new();
-    let input_sel = Selector::parse("input, textarea, select")
+    let control_sel = Selector::parse("input, textarea, select")
         .map_err(|_| anyhow!("Failed to parse control selector"))?;
+    let opt_sel = Selector::parse("option")
+        .map_err(|_| anyhow!("Failed to parse option selector"))?;
 
-    for input in form_el.select(&input_sel) {
-        if let Some(name) = input.value().attr("name") {
-            let val = input.value().attr("value").unwrap_or("").to_string();
-            fields.push((name.to_string(), val));
+    for el in form_el.select(&control_sel) {
+        if el.value().attr("disabled").is_some() {
+            continue;
+        }
+
+        match el.value().name() {
+            "input" => {
+                let Some(name) = el.value().attr("name").filter(|n| !n.is_empty()) else {
+                    continue;
+                };
+                let kind = el.value().attr("type").unwrap_or("text").to_ascii_lowercase();
+                let value = el.value().attr("value").unwrap_or("").to_string();
+                match kind.as_str() {
+                    "button" | "reset" | "file" => {}
+                    "checkbox" | "radio" => {
+                        if el.value().attr("checked").is_some() {
+                            fields.push((name.to_string(), value));
+                        }
+                    }
+                    _ => fields.push((name.to_string(), value)),
+                }
+            }
+            "select" => {
+                let Some(name) = el.value().attr("name").filter(|n| !n.is_empty()) else {
+                    continue;
+                };
+                let options: Vec<_> = el.select(&opt_sel).collect();
+                let chosen = options
+                    .iter()
+                    .rfind(|o| o.value().attr("selected").is_some())
+                    .or_else(|| options.first());
+                if let Some(opt) = chosen {
+                    let val = opt
+                        .value()
+                        .attr("value")
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| opt.text().collect::<String>().trim().to_string());
+                    fields.push((name.to_string(), val));
+                }
+            }
+            "textarea" => {
+                let Some(name) = el.value().attr("name").filter(|n| !n.is_empty()) else {
+                    continue;
+                };
+                fields.push((name.to_string(), el.text().collect::<String>()));
+            }
+            _ => {}
         }
     }
 
@@ -397,11 +472,12 @@ fn extract_form_data(
     Ok((action_url, fields))
 }
 
-/// Silently uploads an assignment submission directly to the LMS submission endpoint.
+/// Silently uploads an assignment submission through Moodle's real repository draft and submission flow.
 pub async fn upload_assignment(
     config_dir: &Path,
     file_path: &str,
     assignment_id: &str,
+    pool: Option<&SqlitePool>,
 ) -> Result<UploadResult> {
     let path = PathBuf::from(file_path);
     if !path.exists() {
@@ -421,39 +497,342 @@ pub async fn upload_assignment(
     let client = get_authenticated_client(config_dir).await?;
 
     log::info!(
-        "Uploading file '{}' ({} bytes) to LMS assignment {}",
+        "Initiating real Moodle submission for file '{}' ({} bytes) to assignment cmid {}",
         filename,
         bytes.len(),
         assignment_id
     );
 
+    // Step A: GET /2025/mod/assign/view.php?id={cmid}&action=editsubmission
+    let edit_url = format!("{}/mod/assign/view.php?id={}&action=editsubmission", LMS_BASE, assignment_id);
+    let edit_resp = client.get(&edit_url).send().await
+        .map_err(|e| anyhow!("Failed to reach assignment submission edit page: {}", e))?;
+    let edit_html = edit_resp.text().await
+        .map_err(|e| anyhow!("Failed to read assignment edit page HTML: {}", e))?;
+
+    // Step B: Extract sesskey, hidden files_filemanager draft itemid, client_id
+    let (sesskey, draft_itemid, client_id) = {
+        let doc = Html::parse_document(&edit_html);
+        let mut sess: Option<String> = None;
+        let mut draft: Option<String> = None;
+
+        if let Ok(sel) = Selector::parse("input[name=\"files_filemanager\"]") {
+            if let Some(el) = doc.select(&sel).next() {
+                if let Some(val) = el.value().attr("value") {
+                    if !val.is_empty() {
+                        draft = Some(val.to_string());
+                    }
+                }
+            }
+        }
+
+        if let Ok(sel) = Selector::parse("input[name=\"sesskey\"]") {
+            if let Some(el) = doc.select(&sel).next() {
+                if let Some(val) = el.value().attr("value") {
+                    if !val.is_empty() {
+                        sess = Some(val.to_string());
+                    }
+                }
+            }
+        }
+
+        if sess.is_none() {
+            static SESSKEY_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+            let re = SESSKEY_RE.get_or_init(|| regex::Regex::new(r#""sesskey":"([A-Za-z0-9]{1,64})""#).unwrap());
+            if let Some(caps) = re.captures(&edit_html) {
+                sess = caps.get(1).map(|m| m.as_str().to_string());
+            }
+        }
+
+        let draft_val = draft.unwrap_or_else(|| {
+            static ITEMID_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+            let re = ITEMID_RE.get_or_init(|| regex::Regex::new(r#""itemid":(\d+)"#).unwrap());
+            re.captures(&edit_html)
+                .and_then(|c| c.get(1))
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_else(|| format!("{}", (chrono::Utc::now().timestamp_millis() % 900000000) + 100000000))
+        });
+
+        static CLIENT_ID_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let cid_re = CLIENT_ID_RE.get_or_init(|| regex::Regex::new(r#""client_id":"([A-Za-z0-9_]+)""#).unwrap());
+        let cid = cid_re.captures(&edit_html)
+            .and_then(|c| c.get(1))
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_else(|| uuid::Uuid::new_v4().simple().to_string());
+
+        (sess, draft_val, cid)
+    };
+
+    let sesskey = sesskey.ok_or_else(|| anyhow!("Could not extract active Moodle sesskey from assignment page"))?;
+
+    log::info!("Extracted Moodle draft itemid: {}, sesskey: {}, client_id: {}", draft_itemid, sesskey, client_id);
+
+    // Step C: POST the file via multipart/form-data to repository_ajax.php?action=upload
+    let repo_upload_url = format!("{}/repository/repository_ajax.php?action=upload", LMS_BASE);
     let part = Part::bytes(bytes)
         .file_name(filename.clone())
         .mime_str("application/octet-stream")
         .map_err(|e| anyhow!("Failed to set MIME type: {}", e))?;
 
-    let form = Form::new()
-        .text("id", assignment_id.to_string())
-        .text("action", "savesubmission")
-        .part("submission_file", part);
+    let repo_form = Form::new()
+        .text("repo_upload_file", filename.clone())
+        .text("sesskey", sesskey.clone())
+        .text("itemid", draft_itemid.clone())
+        .text("filepath", "/")
+        .text("client_id", client_id.clone())
+        .text("repo_id", "4")
+        .text("title", filename.clone())
+        .text("author", "Student")
+        .part("repo_upload_file", part);
 
-    let upload_url = format!("{}/mod/assign/view.php?id={}&action=editsubmission", LMS_BASE, assignment_id);
+    let repo_resp = client.post(&repo_upload_url).multipart(repo_form).send().await
+        .map_err(|e| anyhow!("Failed to POST draft file to Moodle repository: {}", e))?;
 
-    let resp = client
-        .post(&upload_url)
-        .multipart(form)
-        .send()
-        .await
-        .map_err(|e| anyhow!("Upload HTTP request failed: {}", e))?;
+    let repo_json_text = repo_resp.text().await
+        .map_err(|e| anyhow!("Failed to read Moodle repository JSON response: {}", e))?;
 
-    if !resp.status().is_success() && resp.status() != StatusCode::SEE_OTHER {
-        return Err(anyhow!("LMS returned non-success status code during submission: {}", resp.status()));
+    log::info!("Repository upload response: {}", repo_json_text);
+    if repo_json_text.contains("\"error\"") && !repo_json_text.contains("\"error\":false") {
+        return Err(anyhow!("Moodle repository upload rejected file: {}", repo_json_text));
+    }
+
+    // Step D: POST edit submission form to /mod/assign/view.php with action=savesubmission
+    let save_url = format!("{}/mod/assign/view.php", LMS_BASE);
+    let save_fields = [
+        ("id", assignment_id),
+        ("action", "savesubmission"),
+        ("sesskey", &sesskey),
+        ("files_filemanager", &draft_itemid),
+        ("_qf__mod_assign_submission_form", "1"),
+    ];
+
+    let save_resp = client.post(&save_url).form(&save_fields).send().await
+        .map_err(|e| anyhow!("Failed to POST save submission form: {}", e))?;
+    let save_html = save_resp.text().await.unwrap_or_default();
+
+    // Step E: If assignment page requires final confirmation (action="submit"), submit it
+    if save_html.contains("action=\"submit\"") || save_html.contains("name=\"submitbutton\"") && save_html.contains("submit") {
+        log::info!("Final submission confirmation required. Confirming submission...");
+        let confirm_fields = [
+            ("id", assignment_id),
+            ("action", "submit"),
+            ("sesskey", &sesskey),
+            ("confirm", "1"),
+            ("_qf__mod_assign_confirm_form", "1"),
+        ];
+        let _ = client.post(&save_url).form(&confirm_fields).send().await;
+    }
+
+    // Update assignment's status to 'submitted' in SQLite
+    if let Some(db_pool) = pool {
+        let _ = sqlx::query("UPDATE assignments SET status = 'submitted', updated_at = ? WHERE id = ?")
+            .bind(chrono::Utc::now().to_rfc3339())
+            .bind(assignment_id)
+            .execute(db_pool)
+            .await;
+        log::info!("Updated assignment {} status to 'submitted' in SQLite", assignment_id);
     }
 
     Ok(UploadResult {
         success: true,
-        message: format!("Successfully uploaded and submitted '{}' to assignment #{}", filename, assignment_id),
+        message: format!("Successfully uploaded and submitted '{}' to Science Tokyo LMS assignment #{}", filename, assignment_id),
         assignment_id: assignment_id.to_string(),
         filename,
     })
+}
+
+// ==========================================
+// Tokyo Tech Portal (GetAccess + Matrix) Flow
+// ==========================================
+
+pub async fn perform_titech_login(config_dir: &Path) -> Result<(Client, Arc<CookieStoreMutex>)> {
+    let creds = retrieve_credentials()?
+        .ok_or_else(|| anyhow!("No university credentials found in secure OS vault. Please save your credentials in Settings."))?;
+
+    if creds.username.is_empty() || creds.password.is_empty() {
+        return Err(anyhow!("Tokyo Tech username or password is empty"));
+    }
+
+    let matrix = if !creds.matrix_card.is_empty() {
+        creds.matrix_card.clone()
+    } else if let Ok(Some(m)) = crate::auth::retrieve_matrix_card() {
+        m
+    } else {
+        return Err(anyhow!("Tokyo Tech Matrix card (7x10) is not configured in Settings."));
+    };
+
+    let clean_matrix: Vec<char> = matrix.chars().filter(|c| !c.is_whitespace()).collect();
+    if clean_matrix.len() != 70 {
+        return Err(anyhow!("Saved Matrix card must be exactly 70 characters (7 rows x 10 cols). Current length: {}", clean_matrix.len()));
+    }
+
+    log::info!("Starting Tokyo Tech GetAccess portal login for user: {}", creds.username);
+
+    let cookie_store = Arc::new(CookieStoreMutex::new(CookieStore::default()));
+    let client = build_client(cookie_store.clone())?;
+
+    let page_resp = client.get(GETACCESS_START).send().await
+        .map_err(|e| anyhow!("Failed to access GetAccess start page: {}", e))?;
+    let mut page_url = page_resp.url().clone();
+    let mut page_html = page_resp.text().await.map_err(|e| anyhow!("Failed to read GetAccess response: {}", e))?;
+
+    let mut password_sent = false;
+    let mut matrix_sent = false;
+    let mut method_sent = false;
+
+    for _ in 0..8 {
+        // 1. Check if Agreement page
+        if let Some(pw_url) = extract_titech_password_url(&page_html, &page_url) {
+            if password_sent {
+                return Err(anyhow!("GetAccess portal showed agreement page again after credentials"));
+            }
+            log::info!("GetAccess agreement page: navigating to login entry {}", pw_url);
+            let next_resp = client.get(pw_url).send().await.map_err(|e| anyhow!("Failed to reach login URL: {}", e))?;
+            page_url = next_resp.url().clone();
+            page_html = next_resp.text().await.map_err(|e| anyhow!("Failed to read login page: {}", e))?;
+            continue;
+        }
+
+        // 2. Check if Credentials form
+        let has_userpass = page_html.contains("usr_name") && page_html.contains("usr_password");
+        if has_userpass && !password_sent {
+            log::info!("Submitting GetAccess username (uppercase) and password...");
+            let upper_user = creds.username.to_ascii_uppercase();
+            let (action, fields) = parse_form(&page_html, &page_url, "form[name=\"login\"], form", &[
+                ("usr_name", &upper_user),
+                ("usr_password", &creds.password),
+            ])?;
+            password_sent = true;
+
+            let auth_resp = client.post(action).form(&fields).send().await
+                .map_err(|e| anyhow!("Failed to submit GetAccess credentials: {}", e))?;
+            page_url = auth_resp.url().clone();
+            page_html = auth_resp.text().await.map_err(|e| anyhow!("Failed to read credentials response: {}", e))?;
+            continue;
+        }
+
+        // 3. Check if MethodPicker (select option GridAuthOption)
+        if page_html.contains("GridAuthOption") && !method_sent {
+            log::info!("Selecting Grid Authentication method...");
+            method_sent = true;
+            let (action, mut updated_fields) = parse_form(&page_html, &page_url, "form[name=\"login\"], form", &[])?;
+            {
+                let doc = Html::parse_document(&page_html);
+                let sel_selector = Selector::parse("select").unwrap();
+                for sel in doc.select(&sel_selector) {
+                    let name = sel.value().attr("name").unwrap_or("");
+                    let opt_selector = Selector::parse("option").unwrap();
+                    if sel.select(&opt_selector).any(|o| o.value().attr("value") == Some("GridAuthOption")) {
+                        if let Some(pos) = updated_fields.iter().position(|(k, _)| k == name) {
+                            updated_fields[pos].1 = "GridAuthOption".to_string();
+                        } else {
+                            updated_fields.push((name.to_string(), "GridAuthOption".to_string()));
+                        }
+                    }
+                }
+            }
+
+            let method_resp = client.post(action).form(&updated_fields).send().await
+                .map_err(|e| anyhow!("Failed to select GridAuthOption: {}", e))?;
+            page_url = method_resp.url().clone();
+            page_html = method_resp.text().await.map_err(|e| anyhow!("Failed to read method picker response: {}", e))?;
+            continue;
+        }
+
+        // 4. Check if Matrix Challenge
+        let coordinates = extract_matrix_coordinates(&page_html);
+        if !coordinates.is_empty() && !matrix_sent {
+            log::info!("GetAccess Matrix challenge detected: answering {} cells...", coordinates.len());
+            matrix_sent = true;
+            let (action, fields) = parse_form(&page_html, &page_url, "form[name=\"login\"], form", &[])?;
+            let mut answer_fields = fields;
+
+            let requested_inputs: Vec<String> = {
+                let doc = Html::parse_document(&page_html);
+                let input_sel = Selector::parse("input[type=\"text\"], input[type=\"password\"]").unwrap();
+                let mut req = Vec::new();
+                if let Ok(form_sel) = Selector::parse("form[name=\"login\"], form") {
+                    if let Some(form_el) = doc.select(&form_sel).next() {
+                        for inp in form_el.select(&input_sel) {
+                            let name = inp.value().attr("name").unwrap_or("");
+                            if !name.is_empty() && !matches!(name, "usr_name" | "usr_password" | "q") {
+                                req.push(name.to_string());
+                            }
+                        }
+                    }
+                }
+                req
+            };
+
+            for (idx, name) in requested_inputs.iter().enumerate() {
+                if let Some(&(col, row)) = coordinates.get(idx) {
+                    let cell_idx = row * 10 + col;
+                    if let Some(&ch) = clean_matrix.get(cell_idx) {
+                        if let Some(pos) = answer_fields.iter().position(|(k, _)| k == name) {
+                            answer_fields[pos].1 = ch.to_string();
+                        } else {
+                            answer_fields.push((name.clone(), ch.to_string()));
+                        }
+                    }
+                }
+            }
+
+            let matrix_resp = client.post(action).form(&answer_fields).send().await
+                .map_err(|e| anyhow!("Failed to submit Matrix challenge: {}", e))?;
+            page_url = matrix_resp.url().clone();
+            page_html = matrix_resp.text().await.map_err(|e| anyhow!("Failed to read matrix challenge response: {}", e))?;
+            continue;
+        }
+
+        // 5. If reached portal menu or Kyomu
+        if page_html.contains("ResourceList") || page_html.contains("Default.aspx") || page_url.path().contains("ResourceList") {
+            log::info!("Successfully reached Tokyo Tech portal menu!");
+            break;
+        }
+
+        break;
+    }
+
+    save_cookie_store(config_dir, &cookie_store)?;
+    Ok((client, cookie_store))
+}
+
+fn extract_titech_password_url(html: &str, base_url: &Url) -> Option<Url> {
+    let doc = Html::parse_document(html);
+    let sel = Selector::parse("a, input, button").unwrap();
+    for el in doc.select(&sel) {
+        for attr in ["href", "onclick"] {
+            if let Some(val) = el.value().attr(attr) {
+                if val.contains("template=userpass_key") {
+                    for part in val.split(['"', '\'']) {
+                        if part.contains("template=userpass_key") {
+                            let clean = part.replace("&amp;", "&");
+                            if let Ok(u) = base_url.join(&clean) {
+                                return Some(u);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn extract_matrix_coordinates(html: &str) -> Vec<(usize, usize)> {
+    static PATTERN: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = PATTERN.get_or_init(|| regex::Regex::new(r"\[\s*([A-Ja-j])\s*,\s*([1-7])\s*\]").unwrap());
+    let mut coords = Vec::new();
+    for cap in re.captures_iter(html) {
+        if let (Some(c), Some(r)) = (cap.get(1), cap.get(2)) {
+            let col_char = c.as_str().to_ascii_uppercase().chars().next().unwrap();
+            let col = (col_char as u8).saturating_sub(b'A') as usize;
+            if let Ok(row_num) = r.as_str().parse::<usize>() {
+                if (1..=7).contains(&row_num) && col < 10 {
+                    coords.push((col, row_num - 1));
+                }
+            }
+        }
+    }
+    coords
 }

@@ -7,8 +7,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Calendar as CalendarIcon,
-  Pin,
-  Check,
 } from 'lucide-react';
 import {
   startOfMonth,
@@ -29,7 +27,6 @@ import {
   parseISO,
 } from 'date-fns';
 import { useCommandCenterStore } from '../../stores/commandCenterStore';
-import { useLayoutStore } from '../../stores/layoutStore';
 import { ScheduleBlock } from '../../types';
 import { api } from '../../utils/ipc';
 import { courseMatchesQuarter } from '../../utils/academic';
@@ -38,12 +35,10 @@ export type CalendarViewMode = 'day' | 'week' | 'month' | 'timetable';
 
 interface ScheduleWidgetProps {
   fullScreen?: boolean;
-  showPinButton?: boolean;
 }
 
 export const ScheduleWidget: React.FC<ScheduleWidgetProps> = ({
   fullScreen = false,
-  showPinButton = false,
 }) => {
   const {
     scheduleBlocks,
@@ -57,8 +52,6 @@ export const ScheduleWidget: React.FC<ScheduleWidgetProps> = ({
     setSelectedQuarter,
     selectedAcademicYear,
   } = useCommandCenterStore();
-
-  const { isWidgetPinned, toggleWidgetPin } = useLayoutStore();
 
   const [viewMode, setViewMode] = useState<CalendarViewMode>(fullScreen ? 'timetable' : 'week');
   const [currentDate, setCurrentDate] = useState<Date>(() => {
@@ -76,8 +69,6 @@ export const ScheduleWidget: React.FC<ScheduleWidgetProps> = ({
   const [endTime, setEndTime] = useState('10:00');
   const [category, setCategory] = useState('Deep Work');
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const isPinned = isWidgetPinned('widget-schedule');
 
   // Sync currentDate when selectedDate changes externally
   useEffect(() => {
@@ -318,31 +309,6 @@ export const ScheduleWidget: React.FC<ScheduleWidgetProps> = ({
 
         {/* Right: Segmented Control & Navigation Controls (shrink-0) */}
         <div className="flex items-center space-x-1.5 shrink-0">
-          {/* Contextual Pin to Home button (when fullScreen/showPinButton) */}
-          {showPinButton && (
-            <button
-              onClick={() => toggleWidgetPin('widget-schedule')}
-              className={`flex items-center space-x-1 px-2 py-0.5 text-xs rounded border transition-colors shrink-0 ${
-                isPinned
-                  ? 'bg-accent/10 border-accent/40 text-accent font-medium'
-                  : 'bg-surface border-subtle text-tx-muted hover:text-tx-primary hover:bg-elevated'
-              }`}
-              title={isPinned ? 'Widget is pinned to Home' : 'Pin widget to Home dashboard'}
-            >
-              {isPinned ? (
-                <>
-                  <Check className="w-3 h-3 text-accent" />
-                  <span>Pinned ✓</span>
-                </>
-              ) : (
-                <>
-                  <Pin className="w-3 h-3" />
-                  <span>Pin</span>
-                </>
-              )}
-            </button>
-          )}
-
           {/* Segmented View Mode Switcher: Day | Week | Month | Timetable */}
           <div className="flex items-center bg-canvas/80 border border-subtle/60 rounded p-0.5 space-x-0.5 text-[9px] font-medium shrink-0">
             {(['day', 'week', 'month', 'timetable'] as const).map((mode) => (

@@ -73,15 +73,23 @@ pub fn run() {
             commands::create_habit,
             // Science Tokyo LMS & Auth
             commands::save_credentials,
+            commands::save_matrix_card,
             commands::get_credential_status,
             commands::clear_credentials,
             commands::sync_lms,
+            commands::get_lms_sync_state,
+            commands::login_titech,
             commands::get_courses,
             commands::upload_assignment,
+            commands::pick_assignment_file,
             commands::pick_and_upload_assignment,
             commands::get_current_totp,
             commands::verify_totp_seed,
             commands::save_totp_seed,
+            // Quick Notes
+            commands::get_quick_notes,
+            commands::create_quick_note,
+            commands::delete_quick_note,
         ])
         .run(tauri::generate_context!())
         .expect("Error while running LifeOS Command Center");

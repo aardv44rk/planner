@@ -17,31 +17,7 @@ interface LayoutState {
   fetchLayout: () => Promise<void>;
   saveLayoutState: () => Promise<void>;
   resetLayout: () => Promise<void>;
-
-  // Backwards compatibility stubs for UI elements
-  widgets: Array<{ id: string; title: string; visible: boolean }>;
-  isWidgetPinned: (id: string) => boolean;
-  toggleWidgetPin: (id: string) => Promise<void>;
-  setWidgetPin: (id: string, pinned: boolean) => Promise<void>;
 }
-
-export const ALL_WIDGET_IDS = [
-  'schedule',
-  'tasks',
-  'scratchpad',
-  'projects',
-  'habit_matrix',
-  'quick_notes',
-];
-
-export const WIDGET_TITLES: Record<string, string> = {
-  schedule: 'Schedule & Agenda',
-  tasks: "Today's Tasks",
-  scratchpad: 'Daily Scratchpad',
-  projects: 'Active Projects',
-  habit_matrix: 'Habit & Streak Grid',
-  quick_notes: 'Quick Notes',
-};
 
 export const useLayoutStore = create<LayoutState>((set, get) => ({
   activeTab: 'today',
@@ -54,12 +30,6 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   },
   isLoading: false,
   isEditMode: false,
-
-  widgets: ALL_WIDGET_IDS.map((id) => ({
-    id,
-    title: WIDGET_TITLES[id] || id,
-    visible: true,
-  })),
 
   setActiveTab: (tab: AppTab) => {
     set({ activeTab: tab });
@@ -89,10 +59,6 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   toggleEditMode: () => {
     set((state) => ({ isEditMode: !state.isEditMode }));
   },
-
-  isWidgetPinned: (_id: string) => true,
-  toggleWidgetPin: async (_id: string) => {},
-  setWidgetPin: async (_id: string, _pinned: boolean) => {},
 
   saveLayoutState: async () => {
     const { activeTab, isSidebarExpanded, paneSizes } = get();

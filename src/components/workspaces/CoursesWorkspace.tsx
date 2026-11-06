@@ -13,7 +13,7 @@ import {
 import { ResizableWorkspace } from '../ResizableWorkspace';
 import { Tag, Button, Input } from '../ui/controls';
 import { api } from '../../utils/ipc';
-import { Course, Assignment } from '../../types';
+import { Course, Assignment, PickedFileResult } from '../../types';
 import { useCommandCenterStore } from '../../stores/commandCenterStore';
 import { courseMatchesQuarter, sortCoursesForDisplay, getAvailableAcademicYears } from '../../utils/academic';
 
@@ -32,8 +32,7 @@ export const CoursesWorkspace: React.FC = () => {
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
   const [activeTab, setActiveTab] = useState<'instructions' | 'upload'>('instructions');
   const [searchQuery, setSearchQuery] = useState('');
-  const [submittedFile, setSubmittedFile] = useState<File | null>(null);
-  const [filePath, setFilePath] = useState<string>('');
+  const [pickedFile, setPickedFile] = useState<PickedFileResult | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionSuccess, setSubmissionSuccess] = useState(false);
   const [submissionMessage, setSubmissionMessage] = useState<string>('');
@@ -110,25 +109,29 @@ export const CoursesWorkspace: React.FC = () => {
     )
   );
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setSubmittedFile(file);
-      const nativePath = (file as any).path || file.name;
-      setFilePath(nativePath);
-      setSubmissionSuccess(false);
+  const handlePickFile = async () => {
+    try {
+      const file = await api.pickAssignmentFile();
+      if (file && file.path) {
+        setPickedFile(file);
+        setSubmissionSuccess(false);
+      }
+    } catch (err: any) {
+      if (!err?.toString().includes('cancelled') && !err?.toString().includes('No file selected')) {
+        alert(`File picker error: ${err}`);
+      }
     }
   };
 
   const handleRealSubmit = async () => {
-    if (!selectedAssignment) return;
-    if (!submittedFile && !filePath) return;
+    if (!selectedAssignment || !pickedFile) return;
     setIsSubmitting(true);
     try {
-      const fileTarget = filePath || submittedFile?.name || 'submission.pdf';
-      const result = await api.uploadAssignment(fileTarget, selectedAssignment.id);
+      const result = await api.uploadAssignment(pickedFile.path, selectedAssignment.id);
       setSubmissionSuccess(true);
       setSubmissionMessage(result.message);
+      await loadCoursesFromDb();
+      await refreshAll();
     } catch (err: any) {
       alert(typeof err === 'string' ? err : err?.message || 'Failed to submit assignment to LMS');
     } finally {
@@ -347,7 +350,7 @@ export const CoursesWorkspace: React.FC = () => {
                                 setSelectedCourse(course);
                                 setSelectedAssignment(assignment);
                                 setSubmissionSuccess(false);
-                                setSubmittedFile(null);
+                                setPickedFile(null);
                               }}
                               className={`p-2 rounded-[var(--radius-chip)] flex items-center justify-between text-xs cursor-pointer transition-colors border ${
                                 isAssignmentSelected
@@ -540,20 +543,18 @@ export const CoursesWorkspace: React.FC = () => {
                     </div>
 
                     {/* Upload Dropzone */}
-                    <label className="border-2 border-dashed border-subtle hover:border-accent/60 rounded-[var(--radius-surface)] p-8 flex flex-col items-center justify-center text-center cursor-pointer bg-surface-2/40 hover:bg-surface-2 transition-all block">
+                    <div
+                      onClick={handlePickFile}
+                      className="border-2 border-dashed border-subtle hover:border-accent/60 rounded-[var(--radius-surface)] p-8 flex flex-col items-center justify-center text-center cursor-pointer bg-surface-2/40 hover:bg-surface-2 transition-all block"
+                    >
                       <UploadCloud className="w-10 h-10 stroke-[1.5] text-accent mb-2" />
                       <span className="text-xs font-semibold text-tx-primary">
-                        {submittedFile ? submittedFile.name : 'Click to select file or drag & drop'}
+                        {pickedFile ? pickedFile.name : 'Click to select file using OS dialog or drag & drop'}
                       </span>
                       <span className="text-[11px] text-muted mt-1">
                         Accepts PDF, ZIP, TAR.GZ, or source files
                       </span>
-                      <input
-                        type="file"
-                        className="hidden"
-                        onChange={handleFileUpload}
-                      />
-                    </label>
+                    </div>
 
                     {/* Native OS File Dialog Option */}
                     <div className="flex items-center justify-between p-3 rounded-[var(--radius-control)] bg-surface-2 border border-subtle text-xs">
@@ -565,34 +566,21 @@ export const CoursesWorkspace: React.FC = () => {
                         variant="subtle"
                         size="sm"
                         loading={isSubmitting}
-                        onClick={async () => {
-                          try {
-                            setIsSubmitting(true);
-                            const res = await api.pickAndUploadAssignment(selectedAssignment.id);
-                            setSubmissionSuccess(true);
-                            setSubmissionMessage(res.message);
-                          } catch (err: any) {
-                            if (!err.toString().includes('cancelled')) {
-                              alert(`Submission error: ${err}`);
-                            }
-                          } finally {
-                            setIsSubmitting(false);
-                          }
-                        }}
+                        onClick={handlePickFile}
                       >
                         Open OS File Picker
                       </Button>
                     </div>
 
                     {/* File Selected Status Card */}
-                    {submittedFile && (
+                    {pickedFile && (
                       <div className="p-3 rounded-[var(--radius-control)] bg-surface-2 border border-subtle flex items-center justify-between text-xs">
                         <div className="flex items-center space-x-2">
                           <FileCheck className="w-4 h-4 text-accent stroke-[1.75]" />
                           <div>
-                            <div className="font-semibold text-tx-primary">{submittedFile.name}</div>
+                            <div className="font-semibold text-tx-primary">{pickedFile.name}</div>
                             <div className="text-[10px] text-muted font-mono">
-                              {(submittedFile.size / 1024).toFixed(1)} KB · Ready for upload
+                              {(pickedFile.size / 1024).toFixed(1)} KB · Ready for upload
                             </div>
                           </div>
                         </div>

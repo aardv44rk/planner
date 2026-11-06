@@ -59,7 +59,7 @@ export const TodayWorkspace: React.FC = () => {
 
           {/* Main Schedule Content */}
           <div className="flex-1 min-h-0 overflow-hidden bg-surface">
-            <ScheduleWidget fullScreen={false} showPinButton={false} />
+            <ScheduleWidget fullScreen={false} />
           </div>
         </section>
 

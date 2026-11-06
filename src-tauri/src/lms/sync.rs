@@ -392,41 +392,90 @@ fn extract_course_id_from_url(url: &str) -> Option<String> {
     }
 }
 
-fn parse_timetable_filters(html: &str) -> (String, String, String, String) {
-    let document = scraper::Html::parse_document(html);
-    let select_selector = scraper::Selector::parse("select").unwrap();
-    let option_selector = scraper::Selector::parse("option").unwrap();
-
-    let mut year_val = "7".to_string();
-    let mut year_label = "2026".to_string();
-    let mut quota_val = "3".to_string();
-    let mut quota_label = "3".to_string();
-
-    for select in document.select(&select_selector) {
-        let name = select.value().attr("name").unwrap_or("");
-        if name == "year" {
-            for opt in select.select(&option_selector) {
-                let is_sel = opt.value().attr("selected").is_some();
-                let v = opt.value().attr("value").unwrap_or("").to_string();
-                let text: String = opt.text().collect::<String>().trim().to_string();
-                if is_sel || year_val.is_empty() {
-                    year_val = v;
-                    year_label = text;
-                    if is_sel {
-                        break;
-                    }
+pub(crate) fn extract_cmid_from_url(url: &str) -> Option<u64> {
+    if let Ok(parsed) = url::Url::parse(url) {
+        if let Some((_, val)) = parsed.query_pairs().find(|(k, _)| k == "id") {
+            if let Ok(id) = val.parse::<u64>() {
+                if id > 0 {
+                    return Some(id);
                 }
             }
-        } else if name == "quota" {
-            for opt in select.select(&option_selector) {
-                let is_sel = opt.value().attr("selected").is_some();
-                let v = opt.value().attr("value").unwrap_or("").to_string();
-                let text: String = opt.text().collect::<String>().trim().to_string();
-                if is_sel || quota_val.is_empty() {
-                    quota_val = v;
-                    quota_label = text;
-                    if is_sel {
-                        break;
+        }
+    } else {
+        static CMID_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let re = CMID_RE.get_or_init(|| regex::Regex::new(r"[?&]id=(\d+)").unwrap());
+        if let Some(caps) = re.captures(url) {
+            if let Some(m) = caps.get(1) {
+                return m.as_str().parse::<u64>().ok();
+            }
+        }
+    }
+    None
+}
+
+fn parse_timetable_filters(html: &str) -> (String, String, String, String) {
+    let document = scraper::Html::parse_document(html);
+
+    // Dynamic fallback based on Japanese academic calendar
+    let now_utc = chrono::Utc::now();
+    let jst = chrono::FixedOffset::east_opt(9 * 3600).unwrap();
+    let now_japan = now_utc.with_timezone(&jst).date_naive();
+    let calc_year = if now_japan.month() < 4 {
+        now_japan.year() - 1
+    } else {
+        now_japan.year()
+    };
+    let calc_quota = match now_japan.month() {
+        4 | 5 => "1",
+        6 | 7 | 8 | 9 => "2",
+        10 | 11 => "3",
+        _ => "4",
+    };
+
+    let mut year_val = calc_year.to_string();
+    let mut year_label = calc_year.to_string();
+    let mut quota_val = calc_quota.to_string();
+    let mut quota_label = calc_quota.to_string();
+
+    // Select the timetable block [data-block="tttimetable"] first, matching adpt-isct
+    let block_selector = scraper::Selector::parse(r#"[data-block="tttimetable"]"#).unwrap();
+    if let Some(block) = document.select(&block_selector).next() {
+        let select_selector = scraper::Selector::parse("select").unwrap();
+        let option_selector = scraper::Selector::parse("option").unwrap();
+
+        for select in block.select(&select_selector) {
+            let name = select.value().attr("name").unwrap_or("");
+            if name == "year" {
+                let options: Vec<_> = select.select(&option_selector).collect();
+                if let Some(opt) = options.iter().find(|o| o.value().attr("selected").is_some()).or_else(|| options.first()) {
+                    let v = opt.value().attr("value").unwrap_or("").to_string();
+                    let text: String = opt.text().collect::<String>().trim().to_string();
+                    if !text.is_empty() {
+                        year_label = text;
+                    }
+                    if !v.is_empty() {
+                        year_val = v;
+                    } else {
+                        year_val = year_label.clone();
+                    }
+                }
+            } else if name == "quota" {
+                let options: Vec<_> = select.select(&option_selector).collect();
+                if let Some(opt) = options.iter().find(|o| o.value().attr("selected").is_some()).or_else(|| options.first()) {
+                    let v = opt.value().attr("value").unwrap_or("").to_string();
+                    let text: String = opt.text().collect::<String>().trim().to_string();
+                    let clean_label = if let Some(ch) = text.chars().find(|c| matches!(c, '1' | '2' | '3' | '4')) {
+                        ch.to_string()
+                    } else {
+                        text
+                    };
+                    if !clean_label.is_empty() {
+                        quota_label = clean_label;
+                    }
+                    if !v.is_empty() {
+                        quota_val = v;
+                    } else {
+                        quota_val = quota_label.clone();
                     }
                 }
             }
@@ -762,10 +811,16 @@ pub async fn fetch_real_lms_courses_and_assignments(
                     .unwrap_or(0);
 
                 let (due_date_str, due_text_str) = format_timesort_due(timesort);
-                let assignment_id = format!("assign-{}", event_id);
+                let cmid = ev
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .and_then(extract_cmid_from_url)
+                    .or_else(|| ev.get("instance").and_then(Value::as_u64))
+                    .map(|id| id.to_string())
+                    .unwrap_or_else(|| format!("assign-{}", event_id));
 
                 let a = Assignment {
-                    id: assignment_id,
+                    id: cmid,
                     course_id: course_id.to_string(),
                     title: name,
                     due_date: due_date_str,
@@ -854,11 +909,14 @@ pub async fn fetch_real_lms_courses_and_assignments(
                             .unwrap_or("Assignment")
                             .to_string();
 
-                        let already_present = assignments.iter().any(|existing| {
-                            existing.title.eq_ignore_ascii_case(&cm_name) || existing.id == cm_id
-                        });
-
-                        if !already_present {
+                        if let Some(existing) = assignments.iter_mut().find(|existing| {
+                            existing.id == cm_id || existing.title.eq_ignore_ascii_case(&cm_name)
+                        }) {
+                            existing.id = cm_id;
+                            if existing.title == "Untitled Assignment" {
+                                existing.title = cm_name;
+                            }
+                        } else {
                             assignments.push(Assignment {
                                 id: cm_id,
                                 course_id: course_id_str.clone(),
@@ -946,7 +1004,7 @@ pub async fn sync_courses_and_tasks(config_dir: &Path, pool: &SqlitePool) -> Res
         upsert_courses(pool, &courses_to_save).await?;
     }
 
-    // 3. Populate SQLite schedule_blocks with real lectures for active quarters
+    // 3. Populate SQLite schedule_blocks with real lectures for all 4 quarters (1Q-4Q)
     // Wipe old mock lectures and previous auto-synced lectures
     let _ = sqlx::query(
         "DELETE FROM schedule_blocks WHERE source = 'science_tokyo' AND (id LIKE 'isct-lec-%' OR id LIKE 'isct-block-%')"
@@ -967,74 +1025,70 @@ pub async fn sync_courses_and_tasks(config_dir: &Path, pool: &SqlitePool) -> Res
     };
     let acad_year = academic_year.parse::<i32>().unwrap_or(calculated_academic_year);
 
-    // Generate weekly schedule blocks across the active quarter dates (4Q-safe across year boundary)
-    let (q_start, q_end) = match active_quarter.as_str() {
-        "1Q" => (
-            NaiveDate::from_ymd_opt(acad_year, 4, 1).unwrap(),
-            NaiveDate::from_ymd_opt(acad_year, 5, 31).unwrap(),
-        ),
-        "2Q" => (
-            NaiveDate::from_ymd_opt(acad_year, 6, 1).unwrap(),
-            NaiveDate::from_ymd_opt(acad_year, 7, 31).unwrap(),
-        ),
-        "3Q" => (
-            NaiveDate::from_ymd_opt(acad_year, 10, 1).unwrap(),
-            NaiveDate::from_ymd_opt(acad_year, 11, 30).unwrap(),
-        ),
-        "4Q" => (
+    let all_quarters = [
+        ("1Q", NaiveDate::from_ymd_opt(acad_year, 4, 1).unwrap(), NaiveDate::from_ymd_opt(acad_year, 5, 31).unwrap()),
+        ("2Q", NaiveDate::from_ymd_opt(acad_year, 6, 1).unwrap(), NaiveDate::from_ymd_opt(acad_year, 7, 31).unwrap()),
+        ("3Q", NaiveDate::from_ymd_opt(acad_year, 10, 1).unwrap(), NaiveDate::from_ymd_opt(acad_year, 11, 30).unwrap()),
+        (
+            "4Q",
             NaiveDate::from_ymd_opt(acad_year, 12, 1).unwrap(),
-            NaiveDate::from_ymd_opt(acad_year + 1, 2, 28).unwrap(),
+            NaiveDate::from_ymd_opt(acad_year + 1, 2, 29).unwrap_or_else(|| NaiveDate::from_ymd_opt(acad_year + 1, 2, 28).unwrap()),
         ),
-        _ => (
-            now_japan - chrono::Duration::days(14),
-            now_japan + chrono::Duration::days(45),
-        ),
-    };
+    ];
 
     let mut lecture_blocks_count = 0;
-    let mut d = q_start;
-    while d <= q_end {
-        let weekday_num = d.weekday().number_from_monday() as usize; // 1 = Mon .. 7 = Sun
+    for (q_label, q_start, q_end) in all_quarters {
+        let mut d = q_start;
+        while d <= q_end {
+            let weekday_num = d.weekday().number_from_monday() as usize; // 1 = Mon .. 7 = Sun
 
-        for course in &courses_to_save {
-            if let Ok(cid) = course.id.parse::<u64>() {
-                if let Some(info) = timetable_map.get(&cid) {
-                    if info.quarters.iter().any(|q| q == &active_quarter) {
-                        if let Some(periods) = info.day_slots.get(&weekday_num) {
-                            let (start, end) = periods_to_time_range(periods);
-                            let min_period = periods.iter().min().unwrap_or(&1);
-                            let block_id = format!("isct-lec-{}-{}-{}", cid, d, min_period);
-                            let title = format!("{}: {}", course.code, course.title);
+            for course in &courses_to_save {
+                if let Ok(cid) = course.id.parse::<u64>() {
+                    if let Some(info) = timetable_map.get(&cid) {
+                        if info.quarters.iter().any(|q| q == q_label) {
+                            if let Some(periods) = info.day_slots.get(&weekday_num) {
+                                let (start, end) = periods_to_time_range(periods);
+                                let min_period = periods.iter().min().unwrap_or(&1);
+                                let block_id = format!("isct-lec-{}-{}-{}", cid, d, min_period);
+                                let title = format!("{}: {}", course.code, course.title);
 
-                            let res = sqlx::query(
-                                r#"
-                                INSERT INTO schedule_blocks (id, title, start_time, end_time, category, date, source, external_id)
-                                VALUES (?, ?, ?, ?, 'Lecture', ?, 'science_tokyo', ?)
-                                ON CONFLICT(id) DO UPDATE SET
-                                    title = excluded.title,
-                                    start_time = excluded.start_time,
-                                    end_time = excluded.end_time
-                                "#
-                            )
-                            .bind(&block_id)
-                            .bind(&title)
-                            .bind(start)
-                            .bind(end)
-                            .bind(d.format("%Y-%m-%d").to_string())
-                            .bind(&course.id)
-                            .execute(pool)
-                            .await;
+                                let res = sqlx::query(
+                                    r#"
+                                    INSERT INTO schedule_blocks (id, title, start_time, end_time, category, date, source, external_id)
+                                    VALUES (?, ?, ?, ?, 'Lecture', ?, 'science_tokyo', ?)
+                                    ON CONFLICT(id) DO UPDATE SET
+                                        title = excluded.title,
+                                        start_time = excluded.start_time,
+                                        end_time = excluded.end_time
+                                    "#
+                                )
+                                .bind(&block_id)
+                                .bind(&title)
+                                .bind(start)
+                                .bind(end)
+                                .bind(d.format("%Y-%m-%d").to_string())
+                                .bind(&course.id)
+                                .execute(pool)
+                                .await;
 
-                            if res.is_ok() {
-                                lecture_blocks_count += 1;
+                                if res.is_ok() {
+                                    lecture_blocks_count += 1;
+                                }
                             }
                         }
                     }
                 }
             }
+            d += chrono::Duration::days(1);
         }
-        d += chrono::Duration::days(1);
     }
+
+    log::info!("Generated {} real lecture timetable blocks across all 4 quarters (1Q-4Q) for academic year {}", lecture_blocks_count, acad_year);
+
+    // Persist active academic year, active quarter, and sync timestamp into sync_metadata
+    crate::db::set_sync_meta(pool, "active_academic_year", &academic_year).await?;
+    crate::db::set_sync_meta(pool, "active_quarter", &active_quarter).await?;
+    crate::db::set_sync_meta(pool, "last_synced_at", &chrono::Utc::now().to_rfc3339()).await?;
 
     log::info!("Generated {} real lecture timetable blocks in calendar for {}", lecture_blocks_count, active_quarter);
 
@@ -1186,7 +1240,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_live_sync_execution() {
-        let config_dir = PathBuf::from(r"C:\Users\aalaa\AppData\Roaming\lifeos\LifeOS\config");
+        let config_dir = crate::config::get_app_config_dir().unwrap();
         if !config_dir.join("session.cookie").exists() {
             println!("Skipping: session.cookie does not exist");
             return;

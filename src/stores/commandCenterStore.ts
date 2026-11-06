@@ -7,6 +7,7 @@ import {
   DailyNote,
   DashboardMetrics,
   HabitDay,
+  QuickNote,
   ScheduleBlock,
   Task,
   TimeAllocationItem,
@@ -26,6 +27,7 @@ interface CommandCenterState {
   timeAllocation: TimeAllocationItem[];
   habitMatrix: HabitDay[];
   notesHistory: string[];
+  quickNotes: QuickNote[];
   activitySummary: ActivitySummary | null;
   courses: Course[];
   currentAcademicYear: number;
@@ -70,6 +72,14 @@ interface CommandCenterState {
   toggleHabitDay: (habitId: string, date: string) => Promise<void>;
   createHabit: (name: string) => Promise<void>;
 
+  // LMS Sync State
+  fetchSyncState: () => Promise<void>;
+
+  // Quick Notes (Persistent)
+  fetchQuickNotes: () => Promise<void>;
+  createQuickNote: (content: string) => Promise<void>;
+  deleteQuickNote: (id: string) => Promise<void>;
+
   // Full Refresh
   refreshAll: () => Promise<void>;
 }
@@ -87,6 +97,7 @@ export const useCommandCenterStore = create<CommandCenterState>((set, get) => ({
   timeAllocation: [],
   habitMatrix: [],
   notesHistory: [],
+  quickNotes: [],
   activitySummary: null,
   selectedDate: getTodayString(),
   isCommandPaletteOpen: false,
@@ -295,14 +306,60 @@ export const useCommandCenterStore = create<CommandCenterState>((set, get) => ({
     }
   },
 
+  fetchSyncState: async () => {
+    try {
+      const syncState = await api.getLmsSyncState();
+      if (syncState && syncState.active_academic_year && syncState.active_quarter) {
+        const yearNum = parseInt(syncState.active_academic_year, 10) || initialAcademicTerm.academicYear;
+        set({
+          currentAcademicYear: yearNum,
+          currentQuarter: syncState.active_quarter,
+          selectedAcademicYear: syncState.active_academic_year,
+          selectedQuarter: syncState.active_quarter,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch LMS sync state:', err);
+    }
+  },
+
+  fetchQuickNotes: async () => {
+    try {
+      const quickNotes = await api.getQuickNotes();
+      set({ quickNotes });
+    } catch (err) {
+      console.error('Failed to fetch quick notes:', err);
+    }
+  },
+
+  createQuickNote: async (content: string) => {
+    try {
+      const note = await api.createQuickNote(content);
+      set((state) => ({ quickNotes: [note, ...state.quickNotes] }));
+    } catch (err) {
+      console.error('Failed to create quick note:', err);
+    }
+  },
+
+  deleteQuickNote: async (id: string) => {
+    try {
+      await api.deleteQuickNote(id);
+      set((state) => ({ quickNotes: state.quickNotes.filter((n) => n.id !== id) }));
+    } catch (err) {
+      console.error('Failed to delete quick note:', err);
+    }
+  },
+
   refreshAll: async () => {
     set({ isLoading: true });
     await Promise.all([
+      get().fetchSyncState(),
       get().fetchCourses(),
       get().fetchTasks(),
       get().fetchSchedule(get().selectedDate),
       get().fetchDailyNote(get().selectedDate),
       get().fetchNotesHistory(),
+      get().fetchQuickNotes(),
       get().fetchMetrics(),
       get().fetchTimeAllocation(),
       get().fetchHabitMatrix(),

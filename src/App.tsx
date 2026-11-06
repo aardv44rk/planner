@@ -42,11 +42,11 @@ export const App: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
         <TopNav />
         <main className={`flex-1 w-full min-h-0 ${
-          activeTab === 'today' || activeTab === 'courses' || activeTab === 'home'
+          activeTab === 'today' || activeTab === 'courses'
             ? 'overflow-hidden flex flex-col'
             : 'overflow-y-auto custom-scrollbar px-3.5 pb-4 pt-2'
         }`}>
-          {(activeTab === 'today' || activeTab === 'home') && <TodayWorkspace />}
+          {activeTab === 'today' && <TodayWorkspace />}
           {activeTab === 'courses' && <CoursesWorkspace />}
           {activeTab === 'tasks' && <TasksView />}
           {activeTab === 'schedule' && <ScheduleView />}

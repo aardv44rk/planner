@@ -8,9 +8,9 @@ export type WidgetType =
   | 'habit_matrix'
   | 'quick_notes';
 
-export type AppTab = 'today' | 'courses' | 'tasks' | 'schedule' | 'notes' | 'habits' | 'settings' | 'home';
+export type AppTab = 'today' | 'courses' | 'tasks' | 'schedule' | 'notes' | 'habits' | 'settings';
 
-export type WorkspaceType = 'today' | 'courses' | 'home' | 'focus' | 'full' | 'analytics' | 'dashboard';
+export type WorkspaceType = 'today' | 'courses' | 'focus' | 'full' | 'analytics' | 'dashboard';
 
 export interface Course {
   id: string;
@@ -47,7 +47,26 @@ export interface CredentialStatus {
   has_username: boolean;
   has_password: boolean;
   has_totp: boolean;
+  has_matrix: boolean;
   session_cached: boolean;
+}
+
+export interface QuickNote {
+  id: string;
+  content: string;
+  created_at: string;
+}
+
+export interface LmsSyncState {
+  active_academic_year: string;
+  active_quarter: string;
+  last_synced_at: string | null;
+}
+
+export interface PickedFileResult {
+  path: string;
+  name: string;
+  size: number;
 }
 
 export interface UploadResult {
