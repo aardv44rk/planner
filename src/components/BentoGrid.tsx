@@ -8,15 +8,11 @@ import {
   DragStartEvent,
   DragEndEvent,
   DragOverlay,
+  useDroppable,
+  useDraggable,
 } from '@dnd-kit/core';
-import {
-  SortableContext,
-  useSortable,
-  rectSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { useLayoutStore } from '../stores/layoutStore';
-import { WidgetConfig } from '../types';
+import { useLayoutStore, WIDGET_TITLES } from '../stores/layoutStore';
+import { GridSlot } from '../types';
 import { MetricStrip } from './widgets/MetricStrip';
 import { ScheduleWidget } from './widgets/ScheduleWidget';
 import { TasksWidget } from './widgets/TasksWidget';
@@ -54,42 +50,39 @@ const renderWidgetComponent = (type: string, colSpan?: number) => {
     default:
       return (
         <div className="p-4 text-xs text-tx-muted">
-          Widget type: {type}
+          Widget: {type}
         </div>
       );
   }
 };
 
-interface BentoWidgetCardProps {
-  widget: WidgetConfig;
+interface DraggableWidgetProps {
+  widgetId: string;
+  slot: GridSlot;
   isEditMode: boolean;
-  onHide: () => void;
-  onResize: (w: number, h: number) => void;
+  onResizeSlot: (colSpan: number, rowSpan: number) => void;
+  onUnpin: () => void;
   gridRef: React.RefObject<HTMLDivElement | null>;
 }
 
-const BentoWidgetCard: React.FC<BentoWidgetCardProps> = ({
-  widget,
+const DraggableWidget: React.FC<DraggableWidgetProps> = ({
+  widgetId,
+  slot,
   isEditMode,
-  onHide,
-  onResize,
+  onResizeSlot,
+  onUnpin,
   gridRef,
 }) => {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: widget.id });
+  const { attributes, listeners, setNodeRef } = useDraggable({
+    id: widgetId,
+  });
 
   const [resizing, setResizing] = useState(false);
-  const [previewSize, setPreviewSize] = useState<{ w: number; h: number } | null>(null);
-  const resizeStartPos = useRef<{ x: number; y: number; startW: number; startH: number } | null>(null);
-  const latestPreviewSize = useRef<{ w: number; h: number } | null>(null);
+  const [previewSize, setPreviewSize] = useState<{ colSpan: number; rowSpan: number } | null>(null);
+  const resizeStartPos = useRef<{ x: number; y: number; startCol: number; startRow: number } | null>(null);
+  const latestPreviewSize = useRef<{ colSpan: number; rowSpan: number } | null>(null);
 
-  const clampedColSpan = Math.max(1, Math.min(widget.w, 12));
+  const title = WIDGET_TITLES[widgetId] || widgetId;
 
   const handleResizeStart = (e: React.PointerEvent) => {
     e.stopPropagation();
@@ -98,17 +91,17 @@ const BentoWidgetCard: React.FC<BentoWidgetCardProps> = ({
     resizeStartPos.current = {
       x: e.clientX,
       y: e.clientY,
-      startW: widget.w,
-      startH: widget.h,
+      startCol: slot.colSpan,
+      startRow: slot.rowSpan,
     };
-    latestPreviewSize.current = { w: widget.w, h: widget.h };
-    setPreviewSize({ w: widget.w, h: widget.h });
+    latestPreviewSize.current = { colSpan: slot.colSpan, rowSpan: slot.rowSpan };
+    setPreviewSize({ colSpan: slot.colSpan, rowSpan: slot.rowSpan });
 
     const handlePointerMove = (moveEvent: PointerEvent) => {
       if (!resizeStartPos.current || !gridRef.current) return;
       const rect = gridRef.current.getBoundingClientRect();
-      const colWidth = (rect.width - 11 * 14) / 12; // 12-column grid with 14px gap
-      const rowHeight = 180; // row unit
+      const colWidth = (rect.width - 11 * 14) / 12; // 12 columns with 14px gap
+      const rowHeight = 180;
 
       const deltaX = moveEvent.clientX - resizeStartPos.current.x;
       const deltaY = moveEvent.clientY - resizeStartPos.current.y;
@@ -116,19 +109,19 @@ const BentoWidgetCard: React.FC<BentoWidgetCardProps> = ({
       const deltaCols = Math.round(deltaX / Math.max(20, colWidth));
       const deltaRows = Math.round(deltaY / rowHeight);
 
-      const targetW = Math.max(3, Math.min(12, resizeStartPos.current.startW + deltaCols));
-      const targetH = Math.max(1, Math.min(8, resizeStartPos.current.startH + deltaRows));
+      const targetCol = Math.max(3, Math.min(12, resizeStartPos.current.startCol + deltaCols));
+      const targetRow = Math.max(1, Math.min(8, resizeStartPos.current.startRow + deltaRows));
 
-      latestPreviewSize.current = { w: targetW, h: targetH };
-      setPreviewSize({ w: targetW, h: targetH });
+      latestPreviewSize.current = { colSpan: targetCol, rowSpan: targetRow };
+      setPreviewSize({ colSpan: targetCol, rowSpan: targetRow });
     };
 
     const handlePointerUp = () => {
       setResizing(false);
       if (latestPreviewSize.current) {
-        const { w, h } = latestPreviewSize.current;
-        if (w !== widget.w || h !== widget.h) {
-          onResize(w, h);
+        const { colSpan, rowSpan } = latestPreviewSize.current;
+        if (colSpan !== slot.colSpan || rowSpan !== slot.rowSpan) {
+          onResizeSlot(colSpan, rowSpan);
         }
       }
       setPreviewSize(null);
@@ -142,40 +135,14 @@ const BentoWidgetCard: React.FC<BentoWidgetCardProps> = ({
     window.addEventListener('pointerup', handlePointerUp);
   };
 
-  const cardStyle: React.CSSProperties = {
-    gridColumn: `span ${clampedColSpan}`,
-    gridRow: `span ${widget.h}`,
-    transform: resizing ? undefined : CSS.Translate.toString(transform),
-    transition,
-  };
-
-  // Original slot in grid when item is being dragged
-  if (isDragging) {
-    return (
-      <div
-        ref={setNodeRef}
-        style={cardStyle}
-        className="h-full w-full min-h-[180px] rounded border border-dashed border-accent/60 bg-accent/5 flex flex-col items-center justify-center transition-all p-3 select-none"
-      >
-        <span className="text-[11px] text-accent/80 font-mono tracking-wider uppercase font-semibold">
-          {widget.title}
-        </span>
-        <span className="text-[10px] text-tx-muted mt-1 font-mono">
-          Drop to reposition
-        </span>
-      </div>
-    );
-  }
-
   return (
     <div
       ref={setNodeRef}
-      style={cardStyle}
-      className={`group relative h-full w-full min-h-[180px] min-w-0 flex flex-col overflow-hidden rounded bg-surface border border-subtle hover:border-tx-muted/40 transition-colors shadow-xs ${
+      className={`group relative w-full h-full flex flex-col overflow-hidden rounded bg-surface border border-subtle hover:border-tx-muted/40 transition-colors shadow-xs ${
         isEditMode ? 'ring-1 ring-accent/30' : ''
       } ${resizing ? 'ring-2 ring-accent select-none' : ''}`}
     >
-      {/* Unified Minimalist Top Window Bar (Entire bar acts as Drag Handle) */}
+      {/* Top Window Bar: Whole bar is draggable */}
       <div
         {...attributes}
         {...listeners}
@@ -185,7 +152,7 @@ const BentoWidgetCard: React.FC<BentoWidgetCardProps> = ({
         <div className="flex items-center space-x-1.5 min-w-0 pr-2 pointer-events-none">
           <GripVertical className="w-3.5 h-3.5 text-tx-muted/40 group-hover:text-accent transition-colors flex-shrink-0" />
           <span className="text-[11px] font-medium uppercase tracking-wider text-tx-muted truncate">
-            {widget.title}
+            {title}
           </span>
         </div>
 
@@ -207,50 +174,50 @@ const BentoWidgetCard: React.FC<BentoWidgetCardProps> = ({
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onResize(preset.w, widget.h);
+                    onResizeSlot(preset.w, slot.rowSpan);
                   }}
                   className={`px-1 py-0.2 text-[8px] font-mono rounded transition-colors ${
-                    widget.w === preset.w
+                    slot.colSpan === preset.w
                       ? 'bg-accent text-white font-bold'
                       : 'text-tx-muted hover:text-tx-primary hover:bg-elevated'
                   }`}
-                  title={`Resize to ${preset.label} (${preset.w} columns)`}
+                  title={`Resize slot to ${preset.label} (${preset.w} columns)`}
                 >
                   {preset.label}
                 </button>
               ))}
               <span className="text-[8px] font-mono text-tx-muted ml-1 pl-1 border-l border-subtle/50">
-                {widget.w}x{widget.h}
+                {slot.colSpan}x{slot.rowSpan}
               </span>
             </div>
           )}
 
-          {/* Subtle unpin button only visible on card hover */}
+          {/* Subtle unpin button only on card hover */}
           <button
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
-              onHide();
+              onUnpin();
             }}
             className="p-1 rounded text-tx-muted hover:text-red-500 hover:bg-elevated/80 opacity-0 group-hover:opacity-100 transition-opacity"
-            title="Unpin widget from Home dashboard"
+            title="Unpin widget from this slot"
           >
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
-      {/* Concrete Widget Content Panel */}
+      {/* Concrete Widget Panel */}
       <div className="flex-1 w-full min-h-0 overflow-hidden bg-surface">
-        {renderWidgetComponent(widget.type, clampedColSpan)}
+        {renderWidgetComponent(widgetId, slot.colSpan)}
       </div>
 
       {/* Resize Visual Preview Overlay */}
       {resizing && previewSize && (
         <div className="absolute inset-0 z-40 border-2 border-dashed border-accent bg-accent/5 rounded pointer-events-none flex flex-col items-center justify-center backdrop-blur-[1px]">
           <div className="px-2.5 py-1 rounded bg-surface shadow-lg text-xs font-mono font-semibold text-accent border border-accent/40 flex items-center space-x-1.5">
-            <span>{previewSize.w} cols × {previewSize.h} rows</span>
-            <span className="text-[10px] text-tx-muted font-normal">({previewSize.h * 180}px height)</span>
+            <span>{previewSize.colSpan} cols × {previewSize.rowSpan} rows</span>
+            <span className="text-[10px] text-tx-muted font-normal">({previewSize.rowSpan * 180}px height)</span>
           </div>
         </div>
       )}
@@ -261,7 +228,7 @@ const BentoWidgetCard: React.FC<BentoWidgetCardProps> = ({
         className={`absolute bottom-0 right-0 w-3.5 h-3.5 z-30 cursor-se-resize flex items-end justify-end p-0.5 transition-opacity ${
           isEditMode || resizing ? 'opacity-100' : 'opacity-0 group-hover:opacity-60 hover:opacity-100'
         }`}
-        title="Drag corner to resize widget"
+        title="Drag corner to resize slot"
       >
         <div className="w-2 h-2 border-r-2 border-b-2 border-tx-muted/60 hover:border-accent" />
       </div>
@@ -269,15 +236,95 @@ const BentoWidgetCard: React.FC<BentoWidgetCardProps> = ({
   );
 };
 
+interface DroppableSlotProps {
+  slot: GridSlot;
+  isEditMode: boolean;
+  activeWidgetId: string | null;
+  onResizeSlot: (slotId: string, colSpan: number, rowSpan: number) => void;
+  onUnpinWidget: (widgetId: string) => void;
+  gridRef: React.RefObject<HTMLDivElement | null>;
+}
+
+const DroppableSlot: React.FC<DroppableSlotProps> = ({
+  slot,
+  isEditMode,
+  activeWidgetId,
+  onResizeSlot,
+  onUnpinWidget,
+  gridRef,
+}) => {
+  const { setNodeRef, isOver } = useDroppable({
+    id: slot.id,
+  });
+
+  const slotStyle: React.CSSProperties = {
+    gridColumn: `span ${slot.colSpan}`,
+    gridRow: `span ${slot.rowSpan}`,
+  };
+
+  const isCurrentActive = slot.widgetId !== null && slot.widgetId === activeWidgetId;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={slotStyle}
+      className={`relative w-full h-full min-h-[180px] min-w-0 transition-all duration-150 rounded ${
+        isOver
+          ? 'ring-2 ring-accent border-2 border-dashed border-accent bg-accent/10 shadow-md'
+          : isCurrentActive
+          ? 'border border-dashed border-accent/60 bg-accent/5'
+          : ''
+      }`}
+    >
+      {slot.widgetId ? (
+        isCurrentActive ? (
+          // Source slot placeholder while item is actively dragged
+          <div className="w-full h-full flex flex-col items-center justify-center p-3 select-none rounded border border-dashed border-accent/60 bg-accent/5">
+            <span className="text-[11px] text-accent/80 font-mono tracking-wider uppercase font-semibold">
+              {WIDGET_TITLES[slot.widgetId] || slot.widgetId}
+            </span>
+            <span className="text-[10px] text-tx-muted mt-1 font-mono">
+              Moving from this slot...
+            </span>
+          </div>
+        ) : (
+          <DraggableWidget
+            widgetId={slot.widgetId}
+            slot={slot}
+            isEditMode={isEditMode}
+            onResizeSlot={(w, h) => onResizeSlot(slot.id, w, h)}
+            onUnpin={() => onUnpinWidget(slot.widgetId!)}
+            gridRef={gridRef}
+          />
+        )
+      ) : (
+        // Empty slot drop target
+        <div
+          className={`w-full h-full rounded border border-dashed flex flex-col items-center justify-center p-4 text-center transition-colors select-none ${
+            isOver
+              ? 'border-accent bg-accent/15 ring-1 ring-accent'
+              : 'border-subtle/70 bg-surface/30 hover:border-accent/40'
+          }`}
+        >
+          <span className="text-xs font-medium text-tx-muted">Empty Grid Slot</span>
+          <span className="text-[10px] text-tx-muted/70 font-mono mt-0.5">
+            {slot.colSpan} cols × {slot.rowSpan} rows
+          </span>
+          <span className="text-[9px] text-accent mt-1">Drop widget here to place</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const BentoGrid: React.FC = () => {
   const {
-    layout,
+    slots,
     isEditMode,
-    reorderWidgets,
-    resizeWidget,
-    toggleWidgetPin,
-    resetLayout,
+    swapWidgetSlots,
+    resizeSlot,
     setWidgetPin,
+    resetLayout,
   } = useLayoutStore();
 
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
@@ -302,8 +349,9 @@ export const BentoGrid: React.FC = () => {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    if (over && active.id !== over.id) {
-      reorderWidgets(active.id as string, over.id as string);
+    if (over) {
+      // active.id is the dragged widgetId, over.id is the target slot.id
+      swapWidgetSlots(active.id as string, over.id as string);
     }
     setActiveDragId(null);
     setDragDimensions(null);
@@ -314,23 +362,11 @@ export const BentoGrid: React.FC = () => {
     setDragDimensions(null);
   };
 
-  if (!layout) {
-    return (
-      <div className="h-64 w-full flex items-center justify-center">
-        <div className="text-xs text-tx-muted animate-pulse">
-          Loading Home dashboard...
-        </div>
-      </div>
-    );
-  }
+  // Find slot of currently dragged widget for overlay aspect
+  const activeSlot = activeDragId ? slots.find((s) => s.widgetId === activeDragId) : null;
+  const hasAnyPinned = slots.some((s) => s.widgetId !== null);
 
-  // Strictly filter by w.visible so only pinned widgets appear on Home
-  const visibleWidgets = layout.widgets.filter((w) => w.visible !== false);
-  const activeDraggedWidget = activeDragId
-    ? layout.widgets.find((w) => w.id === activeDragId)
-    : null;
-
-  if (visibleWidgets.length === 0) {
+  if (!hasAnyPinned) {
     return (
       <div className="w-full py-16 px-4 flex flex-col items-center justify-center text-center">
         <div className="w-12 h-12 rounded-full bg-surface border border-subtle flex items-center justify-center text-tx-muted mb-3">
@@ -340,14 +376,14 @@ export const BentoGrid: React.FC = () => {
           No Widgets Pinned to Home
         </h3>
         <p className="text-xs text-tx-muted max-w-sm mb-4">
-          Pin widgets from the domain tabs or click "+ Add Widget" in the top bar to customize your dashboard.
+          Pin widgets from the domain tabs or click "+ Add Widget" in the top bar to populate your grid slots.
         </p>
         <div className="flex items-center space-x-2">
           <button
             onClick={() => {
-              setWidgetPin('widget-kpis', true);
-              setWidgetPin('widget-schedule', true);
-              setWidgetPin('widget-tasks', true);
+              setWidgetPin('kpi_strip', true);
+              setWidgetPin('schedule', true);
+              setWidgetPin('tasks', true);
             }}
             className="flex items-center space-x-1.5 px-3 py-1.5 rounded bg-accent text-white text-xs font-medium hover:opacity-90 transition-opacity shadow-xs"
           >
@@ -359,7 +395,7 @@ export const BentoGrid: React.FC = () => {
             className="flex items-center space-x-1.5 px-3 py-1.5 rounded bg-surface border border-subtle text-tx-muted hover:text-tx-primary text-xs transition-colors"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset to Default</span>
+            <span>Reset Layout</span>
           </button>
         </div>
       </div>
@@ -374,55 +410,51 @@ export const BentoGrid: React.FC = () => {
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <SortableContext
-        items={visibleWidgets.map((w) => w.id)}
-        strategy={rectSortingStrategy}
-      >
-        <div className="w-full flex flex-col">
-          {/* Proportional 12-Column CSS Bento Grid */}
-          <div
-            ref={gridContainerRef}
-            className="w-full grid grid-cols-12 gap-3.5"
-            style={{ gridAutoRows: 'minmax(180px, auto)', alignContent: 'start' }}
-          >
-            {visibleWidgets.map((widget) => (
-              <BentoWidgetCard
-                key={widget.id}
-                widget={widget}
-                isEditMode={isEditMode}
-                onHide={() => toggleWidgetPin(widget.id)}
-                onResize={(w, h) => resizeWidget(widget.id, w, h)}
-                gridRef={gridContainerRef}
-              />
-            ))}
-          </div>
+      <div className="w-full flex flex-col">
+        {/* Stationary 12-Column CSS Grid Slots Container */}
+        <div
+          ref={gridContainerRef}
+          className="w-full grid grid-cols-12 gap-3.5"
+          style={{ gridAutoRows: 'minmax(180px, auto)', alignContent: 'start' }}
+        >
+          {slots.map((slot) => (
+            <DroppableSlot
+              key={slot.id}
+              slot={slot}
+              isEditMode={isEditMode}
+              activeWidgetId={activeDragId}
+              onResizeSlot={(slotId, col, row) => resizeSlot(slotId, col, row)}
+              onUnpinWidget={(widgetId) => setWidgetPin(widgetId, false)}
+              gridRef={gridContainerRef}
+            />
+          ))}
         </div>
-      </SortableContext>
+      </div>
 
-      {/* Clean DragOverlay: renders dragged widget at opacity-90 scale-[1.01] shadow-lg ring-1 ring-accent */}
+      {/* Floating DragOverlay: elevated clone of active widget */}
       <DragOverlay dropAnimation={{ duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' }}>
-        {activeDraggedWidget ? (
+        {activeDragId ? (
           <div
             style={{
               width: dragDimensions ? `${dragDimensions.width}px` : undefined,
               height: dragDimensions ? `${dragDimensions.height}px` : undefined,
             }}
-            className="opacity-90 scale-[1.01] shadow-lg ring-1 ring-accent bg-surface rounded border border-subtle overflow-hidden pointer-events-none cursor-grabbing flex flex-col"
+            className="opacity-90 scale-[1.01] shadow-2xl ring-1 ring-accent bg-surface rounded border border-subtle overflow-hidden pointer-events-none cursor-grabbing flex flex-col"
           >
-            {/* Window Top Bar Preview */}
+            {/* Top Bar Preview */}
             <div className="h-8 px-3 flex items-center justify-between border-b border-subtle/60 bg-surface select-none">
               <div className="flex items-center space-x-1.5 min-w-0 pr-2">
                 <GripVertical className="w-3.5 h-3.5 text-accent flex-shrink-0" />
                 <span className="text-[11px] font-medium uppercase tracking-wider text-tx-muted truncate">
-                  {activeDraggedWidget.title}
+                  {WIDGET_TITLES[activeDragId] || activeDragId}
                 </span>
               </div>
               <span className="text-[9px] font-mono text-accent">Moving</span>
             </div>
 
-            {/* Content Preview */}
+            {/* Widget Content Preview */}
             <div className="flex-1 w-full min-h-0 overflow-hidden bg-surface">
-              {renderWidgetComponent(activeDraggedWidget.type, activeDraggedWidget.w)}
+              {renderWidgetComponent(activeDragId, activeSlot?.colSpan)}
             </div>
           </div>
         ) : null}

@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use directories::ProjectDirs;
-use crate::models::{LayoutConfig, WidgetConfig};
+use crate::models::{GridSlot, LayoutConfig};
 
 pub fn get_app_config_dir() -> Result<PathBuf, std::io::Error> {
     let proj_dirs = ProjectDirs::from("com", "lifeos", "LifeOS")
@@ -15,98 +15,19 @@ pub fn get_app_config_dir() -> Result<PathBuf, std::io::Error> {
 
 pub fn default_layout() -> LayoutConfig {
     LayoutConfig {
-        version: 5,
+        version: 6,
         active_workspace: "home".to_string(),
-        widgets: vec![
-            WidgetConfig {
-                id: "widget-kpis".to_string(),
-                widget_type: "kpi_strip".to_string(),
-                title: "Key Performance Indicators".to_string(),
-                x: 0,
-                y: 0,
-                w: 12,
-                h: 1,
-                visible: true,
-                workspace: "home".to_string(),
-            },
-            WidgetConfig {
-                id: "widget-schedule".to_string(),
-                widget_type: "schedule".to_string(),
-                title: "Schedule & Agenda".to_string(),
-                x: 0,
-                y: 1,
-                w: 4,
-                h: 2,
-                visible: true,
-                workspace: "home".to_string(),
-            },
-            WidgetConfig {
-                id: "widget-scratchpad".to_string(),
-                widget_type: "scratchpad".to_string(),
-                title: "Daily Scratchpad".to_string(),
-                x: 4,
-                y: 1,
-                w: 4,
-                h: 2,
-                visible: true,
-                workspace: "home".to_string(),
-            },
-            WidgetConfig {
-                id: "widget-tasks".to_string(),
-                widget_type: "tasks".to_string(),
-                title: "Today's Tasks".to_string(),
-                x: 8,
-                y: 1,
-                w: 4,
-                h: 2,
-                visible: true,
-                workspace: "home".to_string(),
-            },
-            WidgetConfig {
-                id: "widget-projects".to_string(),
-                widget_type: "projects".to_string(),
-                title: "Active Projects".to_string(),
-                x: 0,
-                y: 3,
-                w: 4,
-                h: 2,
-                visible: false,
-                workspace: "home".to_string(),
-            },
-            WidgetConfig {
-                id: "widget-time-allocation".to_string(),
-                widget_type: "time_allocation".to_string(),
-                title: "Time Allocation".to_string(),
-                x: 4,
-                y: 3,
-                w: 4,
-                h: 2,
-                visible: false,
-                workspace: "home".to_string(),
-            },
-            WidgetConfig {
-                id: "widget-habit-matrix".to_string(),
-                widget_type: "habit_matrix".to_string(),
-                title: "Habit & Streak Grid".to_string(),
-                x: 8,
-                y: 3,
-                w: 4,
-                h: 2,
-                visible: false,
-                workspace: "home".to_string(),
-            },
-            WidgetConfig {
-                id: "widget-quick-notes".to_string(),
-                widget_type: "quick_notes".to_string(),
-                title: "Quick Notes".to_string(),
-                x: 0,
-                y: 5,
-                w: 4,
-                h: 2,
-                visible: false,
-                workspace: "home".to_string(),
-            },
-        ],
+        widgets: vec![],
+        slots: Some(vec![
+            GridSlot { id: "slot-1".to_string(), col_span: 12, row_span: 1, widget_id: Some("kpi_strip".to_string()) },
+            GridSlot { id: "slot-2".to_string(), col_span: 8, row_span: 2, widget_id: Some("schedule".to_string()) },
+            GridSlot { id: "slot-3".to_string(), col_span: 4, row_span: 2, widget_id: Some("tasks".to_string()) },
+            GridSlot { id: "slot-4".to_string(), col_span: 4, row_span: 2, widget_id: Some("scratchpad".to_string()) },
+            GridSlot { id: "slot-5".to_string(), col_span: 4, row_span: 2, widget_id: Some("projects".to_string()) },
+            GridSlot { id: "slot-6".to_string(), col_span: 4, row_span: 2, widget_id: Some("time_allocation".to_string()) },
+            GridSlot { id: "slot-7".to_string(), col_span: 6, row_span: 2, widget_id: Some("habit_matrix".to_string()) },
+            GridSlot { id: "slot-8".to_string(), col_span: 6, row_span: 2, widget_id: Some("quick_notes".to_string()) },
+        ]),
         workspaces: None,
     }
 }
@@ -123,8 +44,8 @@ pub fn load_or_init_layout(config_dir: &Path) -> Result<LayoutConfig, Box<dyn st
     let contents = fs::read_to_string(&layout_file)?;
     match serde_json::from_str::<LayoutConfig>(&contents) {
         Ok(layout) => {
-            // Migrate older layout versions (< 5) to single Home dashboard layout
-            if layout.version < 5 {
+            // Migrate older layout versions (< 6) to Slot-Swapping dashboard layout
+            if layout.version < 6 || layout.slots.is_none() {
                 let def = default_layout();
                 let serialized = serde_json::to_string_pretty(&def)?;
                 let _ = fs::write(&layout_file, serialized);

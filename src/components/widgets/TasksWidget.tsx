@@ -43,25 +43,25 @@ export const TasksWidget: React.FC = () => {
   const getPriorityBadge = (p: TaskPriority) => {
     switch (p) {
       case 'high':
-        return <span className="w-1.5 h-1.5 rounded-full bg-red-500" title="High Priority" />;
+        return <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" title="High Priority" />;
       case 'medium':
-        return <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Medium Priority" />;
+        return <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" title="Medium Priority" />;
       case 'low':
-        return <span className="w-1.5 h-1.5 rounded-full bg-blue-400" title="Low Priority" />;
+        return <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" title="Low Priority" />;
     }
   };
 
   return (
-    <div className="flex flex-col h-full w-full p-2.5 select-none min-h-0 overflow-hidden">
+    <div className="@container flex flex-col h-full w-full p-2.5 select-none min-h-0 overflow-hidden">
       {/* Sub Toolbar: Status & Filters */}
-      <div className="flex-shrink-0 flex items-center justify-between pb-1 border-b border-subtle/40">
-        <span className="text-[10px] text-tx-muted font-mono">
+      <div className="flex-shrink-0 flex items-center justify-between pb-1 border-b border-subtle/40 gap-1 flex-wrap">
+        <span className="text-[10px] text-tx-muted font-mono truncate">
           {completed}/{total} ({progressPct}%)
         </span>
 
-        <div className="flex items-center space-x-1">
+        <div className="flex items-center space-x-1 shrink-0">
           {/* Filter tabs */}
-          <div className="flex items-center space-x-0.5 text-[9px] mr-1 bg-canvas/60 rounded p-0.5 border border-subtle/40">
+          <div className="flex items-center space-x-0.5 text-[9px] mr-1 bg-canvas/60 rounded p-0.5 border border-subtle/40 shrink-0">
             {(['all', 'active', 'done'] as const).map((tab) => (
               <button
                 key={tab}
@@ -79,7 +79,7 @@ export const TasksWidget: React.FC = () => {
 
           <button
             onClick={() => setIsAdding(!isAdding)}
-            className="p-0.5 rounded text-tx-muted hover:text-tx-primary hover:bg-elevated transition-colors"
+            className="p-0.5 rounded text-tx-muted hover:text-tx-primary hover:bg-elevated transition-colors shrink-0"
             title="New Task"
           >
             <Plus className="w-3 h-3" />
@@ -104,14 +104,14 @@ export const TasksWidget: React.FC = () => {
               placeholder="Task title..."
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              className="flex-1 px-1.5 py-0.5 bg-transparent text-[11px] text-tx-primary placeholder:text-tx-muted/60 focus:outline-none"
+              className="flex-1 px-1.5 py-0.5 bg-transparent text-[11px] text-tx-primary placeholder:text-tx-muted/60 focus:outline-none min-w-0"
               autoFocus
             />
 
             <select
               value={selectedProject}
               onChange={(e) => setSelectedProject(e.target.value)}
-              className="px-1 py-0.2 text-[9px] rounded bg-surface border border-subtle text-tx-muted focus:outline-none"
+              className="px-1 py-0.2 text-[9px] rounded bg-surface border border-subtle text-tx-muted focus:outline-none hidden @sm:inline-block"
             >
               <option value="LifeOS">LifeOS</option>
               <option value="Work">Work</option>
@@ -131,7 +131,7 @@ export const TasksWidget: React.FC = () => {
 
             <button
               type="submit"
-              className="px-1.5 py-0.5 rounded bg-accent text-white text-[10px] font-medium hover:opacity-90"
+              className="px-1.5 py-0.5 rounded bg-accent text-white text-[10px] font-medium hover:opacity-90 shrink-0"
             >
               Add
             </button>
@@ -151,7 +151,7 @@ export const TasksWidget: React.FC = () => {
             return (
               <div
                 key={task.id}
-                className="group/item flex items-center justify-between py-1.5 px-1 hover:bg-elevated/40 rounded transition-colors"
+                className="group/item flex items-center justify-between py-1.5 px-1 hover:bg-elevated/40 rounded transition-colors gap-2"
               >
                 <div className="flex items-center space-x-2 flex-1 min-w-0">
                   <button
@@ -174,8 +174,8 @@ export const TasksWidget: React.FC = () => {
                   </span>
                 </div>
 
-                <div className="flex items-center space-x-2 flex-shrink-0 ml-1.5">
-                  <span className="text-[9px] px-1 py-0 rounded bg-elevated/80 text-tx-muted font-mono">
+                <div className="flex items-center space-x-1.5 flex-shrink-0 ml-1">
+                  <span className="text-[9px] px-1 py-0 rounded bg-elevated/80 text-tx-muted font-mono hidden @sm:inline-block">
                     {task.project}
                   </span>
 

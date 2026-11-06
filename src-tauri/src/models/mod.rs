@@ -93,11 +93,25 @@ pub struct WidgetConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GridSlot {
+    pub id: String,
+    #[serde(rename = "colSpan")]
+    pub col_span: u32,
+    #[serde(rename = "rowSpan")]
+    pub row_span: u32,
+    #[serde(rename = "widgetId")]
+    pub widget_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayoutConfig {
     pub version: u32,
     #[serde(default = "default_workspace")]
     pub active_workspace: String,
+    #[serde(default)]
     pub widgets: Vec<WidgetConfig>,
+    #[serde(default)]
+    pub slots: Option<Vec<GridSlot>>,
     #[serde(default)]
     pub workspaces: Option<HashMap<String, Vec<WidgetConfig>>>,
 }

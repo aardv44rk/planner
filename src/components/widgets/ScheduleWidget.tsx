@@ -273,7 +273,7 @@ export const ScheduleWidget: React.FC<ScheduleWidgetProps> = ({
 
   return (
     <div
-      className={`flex flex-col h-full w-full select-none min-h-0 overflow-hidden ${
+      className={`@container flex flex-col h-full w-full select-none min-h-0 overflow-hidden ${
         fullScreen ? 'p-4 bg-surface rounded border border-subtle' : 'p-2.5'
       }`}
     >

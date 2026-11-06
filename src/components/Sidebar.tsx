@@ -21,10 +21,10 @@ import {
   Bookmark,
   Pin,
 } from 'lucide-react';
-import { useLayoutStore } from '../stores/layoutStore';
+import { useLayoutStore, ALL_WIDGET_IDS, WIDGET_TITLES } from '../stores/layoutStore';
 import { useThemeStore } from '../stores/themeStore';
 import { useCommandCenterStore } from '../stores/commandCenterStore';
-import { AppTab, WidgetType } from '../types';
+import { AppTab } from '../types';
 
 interface NavItem {
   id: AppTab;
@@ -66,7 +66,7 @@ const navTabs: NavItem[] = [
   },
 ];
 
-const widgetIconMap: Record<WidgetType, React.ComponentType<{ className?: string }>> = {
+const widgetIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   kpi_strip: BarChart3,
   schedule: Clock,
   scratchpad: FileText,
@@ -81,7 +81,7 @@ export const Sidebar: React.FC = () => {
   const {
     activeTab,
     setActiveTab,
-    layout,
+    slots,
     isEditMode,
     toggleEditMode,
     isSidebarExpanded,
@@ -230,20 +230,21 @@ export const Sidebar: React.FC = () => {
                     Pinned to Home
                   </span>
                   <span className="text-[10px] font-mono text-accent">
-                    {layout?.widgets.filter((w) => w.visible !== false).length}/
-                    {layout?.widgets.length}
+                    {slots.filter((s) => s.widgetId !== null).length}/
+                    {ALL_WIDGET_IDS.length}
                   </span>
                 </div>
 
                 <div className="space-y-1">
-                  {layout?.widgets.map((widget) => {
-                    const Icon = widgetIconMap[widget.type] || LayoutGrid;
-                    const isPinned = widget.visible !== false;
+                  {ALL_WIDGET_IDS.map((widgetId) => {
+                    const Icon = widgetIconMap[widgetId] || LayoutGrid;
+                    const isPinned = isWidgetPinned(widgetId);
+                    const title = WIDGET_TITLES[widgetId] || widgetId;
 
                     return (
                       <div
-                        key={widget.id}
-                        onClick={() => toggleWidgetPin(widget.id)}
+                        key={widgetId}
+                        onClick={() => toggleWidgetPin(widgetId)}
                         className={`flex items-center justify-between p-1.5 rounded transition-colors cursor-pointer border ${
                           isPinned
                             ? 'bg-elevated/70 border-subtle/50 text-tx-primary'
@@ -253,14 +254,14 @@ export const Sidebar: React.FC = () => {
                         <div className="flex items-center space-x-2 min-w-0 pr-1">
                           <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${isPinned ? 'text-accent' : 'text-tx-muted'}`} />
                           <span className={`text-[11px] truncate ${isPinned ? 'font-medium' : 'line-through text-tx-muted/60'}`}>
-                            {widget.title}
+                            {title}
                           </span>
                         </div>
 
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            toggleWidgetPin(widget.id);
+                            toggleWidgetPin(widgetId);
                           }}
                           className={`p-1 rounded transition-colors ${
                             isPinned

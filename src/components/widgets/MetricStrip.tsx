@@ -42,7 +42,7 @@ export interface MetricStripProps {
   colSpan?: number;
 }
 
-export const MetricStrip: React.FC<MetricStripProps> = ({ colSpan }) => {
+export const MetricStrip: React.FC<MetricStripProps> = () => {
   const { metrics, tasks } = useCommandCenterStore();
 
   const totalTasks = tasks.length;
@@ -91,19 +91,10 @@ export const MetricStrip: React.FC<MetricStripProps> = ({ colSpan }) => {
     },
   ];
 
-  // Responsive grid columns based on colSpan prop or CSS container queries
-  const getGridColsClass = () => {
-    if (colSpan !== undefined) {
-      if (colSpan >= 10) return 'grid-cols-4';
-      if (colSpan >= 6) return 'grid-cols-2';
-      return 'grid-cols-1';
-    }
-    return 'grid-cols-1 @[360px]:grid-cols-2 @[720px]:grid-cols-4';
-  };
-
   return (
     <div className="@container w-full h-full p-2.5 min-h-0 overflow-y-auto custom-scrollbar select-none">
-      <div className={`grid ${getGridColsClass()} gap-2.5 w-full h-full min-h-0 items-stretch`}>
+      {/* Container query grid: vertical stack by default, 2-col on @lg, 4-col on @4xl */}
+      <div className="grid grid-cols-1 @lg:grid-cols-2 @4xl:grid-cols-4 gap-2.5 w-full h-full min-h-0 items-stretch">
         {cards.map((card, i) => {
           const Icon = card.icon;
           return (

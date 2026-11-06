@@ -24,10 +24,18 @@ export interface WidgetConfig {
   workspace?: string;
 }
 
+export type GridSlot = {
+  id: string;
+  colSpan: number;
+  rowSpan: number;
+  widgetId: string | null;
+};
+
 export interface LayoutConfig {
   version: number;
   active_workspace?: string;
-  widgets: WidgetConfig[];
+  widgets?: WidgetConfig[];
+  slots?: GridSlot[];
   workspaces?: Record<string, WidgetConfig[]>;
 }
 

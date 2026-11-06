@@ -16,9 +16,9 @@ import {
   BarChart3,
   X,
 } from 'lucide-react';
-import { useLayoutStore } from '../stores/layoutStore';
+import { useLayoutStore, ALL_WIDGET_IDS, WIDGET_TITLES } from '../stores/layoutStore';
 import { useCommandCenterStore } from '../stores/commandCenterStore';
-import { AppTab, WidgetType } from '../types';
+import { AppTab } from '../types';
 
 const tabTitles: Record<AppTab, string> = {
   home: 'Home Dashboard',
@@ -28,7 +28,7 @@ const tabTitles: Record<AppTab, string> = {
   habits: 'Habits & Metrics',
 };
 
-const widgetIconMap: Record<WidgetType, React.ComponentType<{ className?: string }>> = {
+const widgetIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   kpi_strip: BarChart3,
   schedule: Clock,
   scratchpad: FileText,
@@ -44,8 +44,8 @@ export const TopNav: React.FC = () => {
     activeTab,
     isEditMode,
     toggleEditMode,
-    layout,
     toggleWidgetPin,
+    isWidgetPinned,
   } = useLayoutStore();
 
   const { setCommandPaletteOpen, selectedDate } = useCommandCenterStore();
@@ -83,7 +83,6 @@ export const TopNav: React.FC = () => {
     };
   }, [isAddMenuOpen]);
 
-  const allWidgets = layout?.widgets || [];
 
   return (
     <header className="flex-shrink-0 w-full h-11 bg-transparent px-3.5 flex items-center justify-between select-none border-b border-subtle/30">
@@ -157,55 +156,50 @@ export const TopNav: React.FC = () => {
                   </div>
 
                   <div className="space-y-1 max-h-60 overflow-y-auto custom-scrollbar">
-                    {allWidgets.length === 0 ? (
-                      <div className="text-xs text-tx-muted p-2 text-center">
-                        No widgets found.
-                      </div>
-                    ) : (
-                      allWidgets.map((widget) => {
-                        const Icon = widgetIconMap[widget.type] || LayoutGrid;
-                        const isPinned = widget.visible !== false;
+                    {ALL_WIDGET_IDS.map((widgetId) => {
+                      const Icon = widgetIconMap[widgetId] || LayoutGrid;
+                      const isPinned = isWidgetPinned(widgetId);
+                      const title = WIDGET_TITLES[widgetId] || widgetId;
 
-                        return (
-                          <div
-                            key={widget.id}
-                            onClick={() => toggleWidgetPin(widget.id)}
-                            className="flex items-center justify-between p-1.5 rounded hover:bg-elevated cursor-pointer transition-colors"
-                          >
-                            <div className="flex items-center space-x-2 min-w-0 pr-2">
-                              <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${isPinned ? 'text-accent' : 'text-tx-muted'}`} />
-                              <span className="text-xs text-tx-primary truncate">
-                                {widget.title}
-                              </span>
-                            </div>
-
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleWidgetPin(widget.id);
-                              }}
-                              className={`flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                                isPinned
-                                  ? 'bg-accent/15 text-accent border border-accent/30'
-                                  : 'bg-canvas text-tx-muted border border-subtle hover:text-tx-primary'
-                              }`}
-                            >
-                              {isPinned ? (
-                                <>
-                                  <Check className="w-2.5 h-2.5" />
-                                  <span>Pinned</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Plus className="w-2.5 h-2.5" />
-                                  <span>Add</span>
-                                </>
-                              )}
-                            </button>
+                      return (
+                        <div
+                          key={widgetId}
+                          onClick={() => toggleWidgetPin(widgetId)}
+                          className="flex items-center justify-between p-1.5 rounded hover:bg-elevated cursor-pointer transition-colors"
+                        >
+                          <div className="flex items-center space-x-2 min-w-0 pr-2">
+                            <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${isPinned ? 'text-accent' : 'text-tx-muted'}`} />
+                            <span className="text-xs text-tx-primary truncate">
+                              {title}
+                            </span>
                           </div>
-                        );
-                      })
-                    )}
+
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleWidgetPin(widgetId);
+                            }}
+                            className={`flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                              isPinned
+                                ? 'bg-accent/15 text-accent border border-accent/30'
+                                : 'bg-canvas text-tx-muted border border-subtle hover:text-tx-primary'
+                            }`}
+                          >
+                            {isPinned ? (
+                              <>
+                                <Check className="w-2.5 h-2.5" />
+                                <span>Pinned</span>
+                              </>
+                            ) : (
+                              <>
+                                <Plus className="w-2.5 h-2.5" />
+                                <span>Add</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

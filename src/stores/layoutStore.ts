@@ -1,21 +1,53 @@
 import { create } from 'zustand';
-import { arrayMove } from '@dnd-kit/sortable';
-import { AppTab, LayoutConfig, WidgetConfig, WidgetType } from '../types';
+import { AppTab, GridSlot, LayoutConfig } from '../types';
 import { api } from '../utils/ipc';
 
-export const DEFAULT_HOME_WIDGETS: WidgetConfig[] = [
-  { id: 'widget-kpis', type: 'kpi_strip', title: 'Key Performance Indicators', x: 0, y: 0, w: 12, h: 1, visible: true, workspace: 'home' },
-  { id: 'widget-schedule', type: 'schedule', title: 'Schedule & Agenda', x: 0, y: 1, w: 4, h: 2, visible: true, workspace: 'home' },
-  { id: 'widget-scratchpad', type: 'scratchpad', title: 'Daily Scratchpad', x: 4, y: 1, w: 4, h: 2, visible: true, workspace: 'home' },
-  { id: 'widget-tasks', type: 'tasks', title: "Today's Tasks", x: 8, y: 1, w: 4, h: 2, visible: true, workspace: 'home' },
-  { id: 'widget-projects', type: 'projects', title: 'Active Projects', x: 0, y: 3, w: 4, h: 2, visible: false, workspace: 'home' },
-  { id: 'widget-time-allocation', type: 'time_allocation', title: 'Time Allocation', x: 4, y: 3, w: 4, h: 2, visible: false, workspace: 'home' },
-  { id: 'widget-habit-matrix', type: 'habit_matrix', title: 'Habit & Streak Grid', x: 8, y: 3, w: 4, h: 2, visible: false, workspace: 'home' },
-  { id: 'widget-quick-notes', type: 'quick_notes', title: 'Quick Notes', x: 0, y: 5, w: 4, h: 2, visible: false, workspace: 'home' },
+export const normalizeWidgetId = (id: string | null | undefined): string | null => {
+  if (!id) return null;
+  const clean = id.replace(/^widget-/, '');
+  if (clean === 'kpis') return 'kpi_strip';
+  if (clean === 'habit-matrix') return 'habit_matrix';
+  if (clean === 'time-allocation') return 'time_allocation';
+  if (clean === 'quick-notes') return 'quick_notes';
+  return clean;
+};
+
+export const DEFAULT_SLOTS: GridSlot[] = [
+  { id: 'slot-1', colSpan: 12, rowSpan: 1, widgetId: 'kpi_strip' },
+  { id: 'slot-2', colSpan: 8, rowSpan: 2, widgetId: 'schedule' },
+  { id: 'slot-3', colSpan: 4, rowSpan: 2, widgetId: 'tasks' },
+  { id: 'slot-4', colSpan: 4, rowSpan: 2, widgetId: 'scratchpad' },
+  { id: 'slot-5', colSpan: 4, rowSpan: 2, widgetId: 'projects' },
+  { id: 'slot-6', colSpan: 4, rowSpan: 2, widgetId: 'time_allocation' },
+  { id: 'slot-7', colSpan: 6, rowSpan: 2, widgetId: 'habit_matrix' },
+  { id: 'slot-8', colSpan: 6, rowSpan: 2, widgetId: 'quick_notes' },
 ];
+
+export const ALL_WIDGET_IDS = [
+  'kpi_strip',
+  'schedule',
+  'tasks',
+  'scratchpad',
+  'projects',
+  'time_allocation',
+  'habit_matrix',
+  'quick_notes',
+] as const;
+
+export const WIDGET_TITLES: Record<string, string> = {
+  kpi_strip: 'Key Performance Indicators',
+  schedule: 'Schedule & Agenda',
+  tasks: "Today's Tasks",
+  scratchpad: 'Daily Scratchpad',
+  projects: 'Active Projects',
+  time_allocation: 'Time Allocation',
+  habit_matrix: 'Habit & Streak Grid',
+  quick_notes: 'Quick Notes',
+};
 
 interface LayoutState {
   activeTab: AppTab;
+  slots: GridSlot[];
   layout: LayoutConfig | null;
   isLoading: boolean;
   isEditMode: boolean;
@@ -30,20 +62,19 @@ interface LayoutState {
   setSelectedWidgetId: (id: string | null) => void;
 
   fetchLayout: () => Promise<void>;
-  reorderWidgets: (activeId: string, overId: string) => Promise<void>;
-  swapWidgets: (idA: string, idB: string) => Promise<void>;
-  updateWidgetPosition: (id: string, updates: Partial<WidgetConfig>) => Promise<void>;
-  toggleWidgetVisibility: (id: string) => Promise<void>;
-  setWidgetVisibility: (id: string, visible: boolean) => Promise<void>;
-  isWidgetPinned: (typeOrId: WidgetType | string) => boolean;
-  toggleWidgetPin: (typeOrId: WidgetType | string) => Promise<void>;
-  setWidgetPin: (typeOrId: WidgetType | string, pinned: boolean) => Promise<void>;
-  resizeWidget: (id: string, w: number, h: number) => Promise<void>;
+  swapWidgetSlots: (activeWidgetId: string, overSlotId: string) => Promise<void>;
+  reorderWidgets: (activeWidgetId: string, overSlotId: string) => Promise<void>;
+  resizeSlot: (slotId: string, colSpan: number, rowSpan: number) => Promise<void>;
+  isWidgetPinned: (id: string) => boolean;
+  setWidgetPin: (id: string, pinned: boolean) => Promise<void>;
+  toggleWidgetPin: (id: string) => Promise<void>;
   resetLayout: () => Promise<void>;
+  persistSlots: (slots: GridSlot[]) => Promise<void>;
 }
 
 export const useLayoutStore = create<LayoutState>((set, get) => ({
   activeTab: 'home',
+  slots: DEFAULT_SLOTS,
   layout: null,
   isLoading: false,
   isEditMode: false,
@@ -64,207 +95,185 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   setSidebarExpanded: (val) => set({ isSidebarExpanded: val }),
   setSelectedWidgetId: (id) => set({ selectedWidgetId: id }),
 
+  persistSlots: async (slots: GridSlot[]) => {
+    const updatedLayout: LayoutConfig = {
+      version: 6,
+      active_workspace: 'home',
+      slots,
+      widgets: [],
+    };
+    set({ layout: updatedLayout });
+    try {
+      await api.saveLayout(updatedLayout);
+    } catch (err) {
+      console.error('Failed to persist slots layout:', err);
+    }
+  },
+
   fetchLayout: async () => {
     set({ isLoading: true });
     try {
       const layout = await api.getLayout();
+      let resolvedSlots: GridSlot[];
 
-      // Ensure all 8 standard widgets exist in the home layout
-      const existingWidgets = layout.widgets || [];
-      const mergedWidgets: WidgetConfig[] = [...existingWidgets];
-
-      for (const defWidget of DEFAULT_HOME_WIDGETS) {
-        const found = mergedWidgets.find(
-          (w) => w.id === defWidget.id || w.type === defWidget.type
-        );
-        if (!found) {
-          mergedWidgets.push(defWidget);
-        }
+      if (layout.slots && layout.slots.length > 0) {
+        resolvedSlots = layout.slots;
+      } else {
+        resolvedSlots = DEFAULT_SLOTS;
       }
 
-      // Ensure each widget has workspace: 'home'
-      const normalizedWidgets = mergedWidgets.map((w) => ({
-        ...w,
-        workspace: 'home',
-      }));
-
-      const normalizedLayout: LayoutConfig = {
-        ...layout,
-        version: 5,
-        active_workspace: 'home',
-        widgets: normalizedWidgets,
-      };
-
       set({
-        layout: normalizedLayout,
+        layout: {
+          ...layout,
+          version: 6,
+          active_workspace: 'home',
+          slots: resolvedSlots,
+        },
+        slots: resolvedSlots,
         isLoading: false,
       });
     } catch (err) {
       console.error('Failed to fetch layout:', err);
       set({
         layout: {
-          version: 5,
+          version: 6,
           active_workspace: 'home',
-          widgets: DEFAULT_HOME_WIDGETS,
+          slots: DEFAULT_SLOTS,
         },
+        slots: DEFAULT_SLOTS,
         isLoading: false,
       });
     }
   },
 
-  isWidgetPinned: (typeOrId: WidgetType | string) => {
-    const { layout } = get();
-    if (!layout) return false;
-    const widget = layout.widgets.find((w) => w.id === typeOrId || w.type === typeOrId);
-    return widget ? widget.visible !== false : false;
-  },
+  swapWidgetSlots: async (activeWidgetId: string, overSlotId: string) => {
+    const { slots } = get();
+    const normActive = normalizeWidgetId(activeWidgetId);
 
-  setWidgetPin: async (typeOrId: WidgetType | string, pinned: boolean) => {
-    const { layout } = get();
-    if (!layout) return;
-
-    let targetFound = false;
-    const newWidgets = layout.widgets.map((w) => {
-      if (w.id === typeOrId || w.type === typeOrId) {
-        targetFound = true;
-        return { ...w, visible: pinned };
-      }
-      return w;
-    });
-
-    if (!targetFound) {
-      const def = DEFAULT_HOME_WIDGETS.find((w) => w.id === typeOrId || w.type === typeOrId);
-      if (def) {
-        newWidgets.push({ ...def, visible: pinned });
-      }
-    }
-
-    const updatedLayout: LayoutConfig = {
-      ...layout,
-      widgets: newWidgets,
-    };
-
-    set({ layout: updatedLayout });
-    try {
-      await api.saveLayout(updatedLayout);
-    } catch (err) {
-      console.error('Failed to persist widget pin:', err);
-    }
-  },
-
-  toggleWidgetPin: async (typeOrId: WidgetType | string) => {
-    const isPinned = get().isWidgetPinned(typeOrId);
-    await get().setWidgetPin(typeOrId, !isPinned);
-  },
-
-  toggleWidgetVisibility: async (id: string) => {
-    await get().toggleWidgetPin(id);
-  },
-
-  setWidgetVisibility: async (id: string, visible: boolean) => {
-    await get().setWidgetPin(id, visible);
-  },
-
-  reorderWidgets: async (activeId: string, overId: string) => {
-    const { layout } = get();
-    if (!layout) return;
-
-    const oldIndex = layout.widgets.findIndex((w) => w.id === activeId);
-    const newIndex = layout.widgets.findIndex((w) => w.id === overId);
-    if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
-
-    // Use arrayMove directly on the master layout.widgets array
-    const newWidgets = arrayMove(layout.widgets, oldIndex, newIndex);
-
-    // Recompute sequential (x, y) coordinates for grid serialization
-    let curX = 0;
-    let curY = 0;
-    let rowH = 0;
-    const updatedWidgets = newWidgets.map((w) => {
-      if (!w.visible) return w;
-      if (curX + w.w > 12) {
-        curX = 0;
-        curY += rowH;
-        rowH = 0;
-      }
-      const updated = { ...w, x: curX, y: curY };
-      curX += w.w;
-      rowH = Math.max(rowH, w.h);
-      return updated;
-    });
-
-    const updatedLayout: LayoutConfig = {
-      ...layout,
-      widgets: updatedWidgets,
-    };
-
-    set({ layout: updatedLayout, selectedWidgetId: null });
-    try {
-      await api.saveLayout(updatedLayout);
-    } catch (err) {
-      console.error('Failed to persist reordered layout:', err);
-    }
-  },
-
-  swapWidgets: async (idA: string, idB: string) => {
-    await get().reorderWidgets(idA, idB);
-  },
-
-  updateWidgetPosition: async (id: string, updates: Partial<WidgetConfig>) => {
-    const { layout } = get();
-    if (!layout) return;
-
-    const newWidgets = layout.widgets.map((w) =>
-      w.id === id ? { ...w, ...updates } : w
+    // Find sourceSlot where widgetId matches activeWidgetId
+    const sourceIndex = slots.findIndex(
+      (s) => s.widgetId && normalizeWidgetId(s.widgetId) === normActive
     );
 
-    const updatedLayout: LayoutConfig = {
-      ...layout,
-      widgets: newWidgets,
+    // Find targetSlot where id matches overSlotId (or widgetId matches overSlotId)
+    const targetIndex = slots.findIndex(
+      (s) => s.id === overSlotId || (s.widgetId && normalizeWidgetId(s.widgetId) === normalizeWidgetId(overSlotId))
+    );
+
+    if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) return;
+
+    // Swap their widgetId values in the state array. Do not change slots' positions or dimensions.
+    const newSlots = [...slots];
+    const sourceWidget = newSlots[sourceIndex].widgetId;
+    const targetWidget = newSlots[targetIndex].widgetId;
+
+    newSlots[sourceIndex] = {
+      ...newSlots[sourceIndex],
+      widgetId: targetWidget,
+    };
+    newSlots[targetIndex] = {
+      ...newSlots[targetIndex],
+      widgetId: sourceWidget,
     };
 
-    set({ layout: updatedLayout });
-    try {
-      await api.saveLayout(updatedLayout);
-    } catch (err) {
-      console.error('Failed to persist layout update:', err);
+    set({ slots: newSlots, selectedWidgetId: null });
+    await get().persistSlots(newSlots);
+  },
+
+  reorderWidgets: async (activeWidgetId: string, overSlotId: string) => {
+    await get().swapWidgetSlots(activeWidgetId, overSlotId);
+  },
+
+  resizeSlot: async (slotId: string, colSpan: number, rowSpan: number) => {
+    const clampedCol = Math.max(3, Math.min(12, colSpan));
+    const clampedRow = Math.max(1, Math.min(8, rowSpan));
+    const { slots } = get();
+    const newSlots = slots.map((s) =>
+      s.id === slotId ? { ...s, colSpan: clampedCol, rowSpan: clampedRow } : s
+    );
+    set({ slots: newSlots });
+    await get().persistSlots(newSlots);
+  },
+
+  isWidgetPinned: (id: string) => {
+    const norm = normalizeWidgetId(id);
+    const { slots } = get();
+    return slots.some((s) => s.widgetId && normalizeWidgetId(s.widgetId) === norm);
+  },
+
+  setWidgetPin: async (id: string, pinned: boolean) => {
+    const norm = normalizeWidgetId(id);
+    if (!norm) return;
+    const { slots } = get();
+
+    if (!pinned) {
+      // Unpin widget: set slot's widgetId to null
+      const newSlots = slots.map((s) =>
+        s.widgetId && normalizeWidgetId(s.widgetId) === norm ? { ...s, widgetId: null } : s
+      );
+      set({ slots: newSlots });
+      await get().persistSlots(newSlots);
+    } else {
+      // Already pinned?
+      if (slots.some((s) => s.widgetId && normalizeWidgetId(s.widgetId) === norm)) {
+        return;
+      }
+      // Pin widget: find first empty slot or append
+      const emptySlotIndex = slots.findIndex((s) => s.widgetId === null);
+      let newSlots: GridSlot[];
+
+      if (emptySlotIndex !== -1) {
+        newSlots = [...slots];
+        newSlots[emptySlotIndex] = {
+          ...newSlots[emptySlotIndex],
+          widgetId: norm,
+        };
+      } else {
+        const newSlotId = `slot-${Date.now()}`;
+        newSlots = [
+          ...slots,
+          { id: newSlotId, colSpan: 4, rowSpan: 2, widgetId: norm },
+        ];
+      }
+
+      set({ slots: newSlots });
+      await get().persistSlots(newSlots);
     }
   },
 
-  resizeWidget: async (id: string, w: number, h: number) => {
-    const clampedW = Math.max(3, Math.min(12, w));
-    const clampedH = Math.max(1, Math.min(8, h));
-    await get().updateWidgetPosition(id, { w: clampedW, h: clampedH });
+  toggleWidgetPin: async (id: string) => {
+    const isPinned = get().isWidgetPinned(id);
+    await get().setWidgetPin(id, !isPinned);
   },
 
   resetLayout: async () => {
     set({ isLoading: true });
     try {
       const reset = await api.resetLayout();
-      const resetWidgets = (reset.widgets && reset.widgets.length > 0)
-        ? reset.widgets
-        : DEFAULT_HOME_WIDGETS;
-
-      const updatedLayout: LayoutConfig = {
-        version: 5,
-        active_workspace: 'home',
-        widgets: resetWidgets,
-      };
+      const resetSlots = (reset.slots && reset.slots.length > 0)
+        ? reset.slots
+        : DEFAULT_SLOTS;
 
       set({
-        layout: updatedLayout,
+        layout: {
+          version: 6,
+          active_workspace: 'home',
+          slots: resetSlots,
+        },
+        slots: resetSlots,
         isLoading: false,
         selectedWidgetId: null,
       });
-      await api.saveLayout(updatedLayout);
+      await get().persistSlots(resetSlots);
     } catch (err) {
       console.error('Failed to reset layout:', err);
       set({
         layout: {
-          version: 5,
+          version: 6,
           active_workspace: 'home',
-          widgets: DEFAULT_HOME_WIDGETS,
+          slots: DEFAULT_SLOTS,
         },
+        slots: DEFAULT_SLOTS,
         isLoading: false,
       });
     }
