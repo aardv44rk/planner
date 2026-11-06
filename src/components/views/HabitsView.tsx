@@ -75,9 +75,6 @@ export const HabitsView: React.FC = () => {
                 Streak: {streakDays} Days · Focus: {hours}h {mins}m
               </span>
             </div>
-            <p className="text-[11px] text-tx-muted">
-              Habit tracking grid, time allocation metrics, and desktop activity analytics.
-            </p>
           </div>
         </div>
       </div>

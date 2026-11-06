@@ -281,10 +281,57 @@ export const api = {
       });
     }
   },
+  saveScienceCredentials: async (
+    username?: string,
+    password?: string,
+    totpSeed?: string
+  ): Promise<void> => {
+    if (isTauri()) {
+      return await invoke<void>('save_science_credentials', {
+        username: username || '',
+        password: password || '',
+        totpSeed: totpSeed || '',
+      });
+    }
+  },
+  saveTitechCredentials: async (
+    username?: string,
+    password?: string,
+    matrixCard?: string
+  ): Promise<void> => {
+    if (isTauri()) {
+      return await invoke<void>('save_titech_credentials', {
+        username: username || '',
+        password: password || '',
+        matrixCard: matrixCard || '',
+      });
+    }
+  },
+  clearScienceCredentials: async (): Promise<void> => {
+    if (isTauri()) {
+      return await invoke<void>('clear_science_credentials');
+    }
+  },
+  clearTitechCredentials: async (): Promise<void> => {
+    if (isTauri()) {
+      return await invoke<void>('clear_titech_credentials');
+    }
+  },
   saveMatrixCard: async (matrix: string): Promise<void> => {
     if (isTauri()) {
       return await invoke<void>('save_matrix_card', { matrix });
     }
+  },
+  openUrl: async (url: string): Promise<void> => {
+    if (isTauri()) {
+      try {
+        await invoke<void>('open_url', { url });
+        return;
+      } catch (err) {
+        console.warn('Failed to invoke open_url, falling back to window.open', err);
+      }
+    }
+    window.open(url, '_blank');
   },
   loginTitech: async (): Promise<string> => {
     if (isTauri()) {

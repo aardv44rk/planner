@@ -13,7 +13,6 @@ import {
   Calendar,
   FolderKanban,
   Check,
-  GraduationCap,
   KeyRound,
 } from 'lucide-react';
 import { useLayoutStore } from '../stores/layoutStore';
@@ -39,7 +38,7 @@ const navTabs: NavItem[] = [
   {
     id: 'courses',
     label: 'Courses',
-    shortDesc: 'Science Tokyo LMS & Assignments',
+    shortDesc: 'Course outlines & tasks',
     icon: BookOpen,
   },
   {
@@ -376,16 +375,6 @@ export const Sidebar: React.FC = () => {
                     </div>
                   )}
                 </div>
-
-                <div className="pt-2 border-t border-subtle">
-                  <div className="p-2 rounded-[10px] bg-surface-3 text-muted text-[11px] space-y-1">
-                    <div className="font-semibold text-tx-primary flex items-center space-x-1">
-                      <GraduationCap className="w-3.5 h-3.5 text-accent" />
-                      <span>Science Tokyo LMS</span>
-                    </div>
-                    <div>{selectedAcademicYear} Academic Year · {selectedQuarter === 'All' ? 'All Quarters' : `Quarter ${selectedQuarter}`}</div>
-                  </div>
-                </div>
               </div>
             )}
 
@@ -529,15 +518,6 @@ export const Sidebar: React.FC = () => {
                 <span className="text-[11px] uppercase tracking-wider font-semibold text-muted block">
                   Security & Accounts
                 </span>
-                <div className="p-3 rounded-[10px] bg-surface border border-subtle text-xs space-y-2">
-                  <div className="font-semibold text-tx-primary flex items-center space-x-1.5">
-                    <KeyRound className="w-3.5 h-3.5 text-accent stroke-[2]" />
-                    <span>Science Tokyo Enclave</span>
-                  </div>
-                  <p className="text-[11px] text-muted leading-relaxed">
-                    Credentials stored in OS Keyring. TOTP codes auto-generated during headless SAML authentication.
-                  </p>
-                </div>
               </div>
             )}
           </div>

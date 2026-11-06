@@ -136,14 +136,29 @@ fn build_client(cookie_store: Arc<CookieStoreMutex>) -> Result<Client> {
 /// Headless SSO state machine that silently negotiates Science Tokyo SAML / Extic authentication.
 /// Mirrors the sequence of requests, form extractions, and SAML handshakes from isct-companion.
 pub async fn perform_sso_login(config_dir: &Path) -> Result<(Client, Arc<CookieStoreMutex>)> {
-    let creds = retrieve_credentials()?
-        .ok_or_else(|| anyhow!("No university credentials found in secure OS vault. Please save your credentials in Settings."))?;
+    let (username, password) = if let Ok(Some(sci)) = crate::auth::retrieve_science_credentials() {
+        if !sci.username.is_empty() && !sci.password.is_empty() {
+            (sci.username, sci.password)
+        } else if let Ok(Some(creds)) = retrieve_credentials() {
+            (creds.username, creds.password)
+        } else {
+            (sci.username, sci.password)
+        }
+    } else if let Ok(Some(creds)) = retrieve_credentials() {
+        (creds.username, creds.password)
+    } else {
+        return Err(anyhow!("No Science Tokyo credentials found in secure OS vault. Please save your Science Tokyo credentials in Settings."));
+    };
 
-    if creds.username.is_empty() || creds.password.is_empty() {
-        return Err(anyhow!("University username or password is empty"));
+    if username.is_empty() || password.is_empty() {
+        return Err(anyhow!("Science Tokyo username or password is empty"));
     }
 
-    log::info!("Starting headless SSO login flow for user: {}", creds.username);
+    let totp_seed = crate::auth::retrieve_totp_seed()
+        .unwrap_or(None)
+        .unwrap_or_default();
+
+    log::info!("Starting headless SSO login flow for Science Tokyo user: {}", username);
 
     let cookie_store = Arc::new(CookieStoreMutex::new(CookieStore::default()));
     let client = build_client(cookie_store.clone())?;
@@ -170,12 +185,12 @@ pub async fn perform_sso_login(config_dir: &Path) -> Result<(Client, Arc<CookieS
 
     // Step 2: Parse credentials form (Extic login form)
     let (login_action, login_fields) = parse_form(&html, &final_url, "form#login", &[
-        ("identifier", &creds.username),
-        ("password", &creds.password),
+        ("identifier", &username),
+        ("password", &password),
     ])
     .or_else(|_| parse_first_form_with_fields(&html, &final_url, &[
-        ("identifier", &creds.username),
-        ("password", &creds.password),
+        ("identifier", &username),
+        ("password", &password),
     ]))
     .map_err(|e| anyhow!("Failed to find login credentials form: {}. The school login page layout may have changed.", e))?;
 
@@ -221,19 +236,19 @@ pub async fn perform_sso_login(config_dir: &Path) -> Result<(Client, Arc<CookieS
 
     if is_mfa {
         log::info!("MFA challenge detected. Checking TOTP window timing...");
-        if creds.totp_seed.is_empty() {
-            return Err(anyhow!("University portal requires Multi-Factor Authentication (TOTP), but no TOTP seed was provided in Settings."));
+        if totp_seed.is_empty() {
+            return Err(anyhow!("Science Tokyo portal requires Multi-Factor Authentication (TOTP), but no TOTP seed was configured in Settings."));
         }
 
         // Window boundary check: if <= 2s remaining, wait for next window to avoid race condition
-        let code_info = get_totp_code_info(&creds.totp_seed)
+        let code_info = get_totp_code_info(&totp_seed)
             .map_err(|e| anyhow!("Failed to inspect TOTP timing: {}", e))?;
         if code_info.seconds_remaining <= 2 {
             log::info!("TOTP window boundary detected ({}s remaining). Sleeping until next 30s window...", code_info.seconds_remaining);
             tokio::time::sleep(std::time::Duration::from_secs(code_info.seconds_remaining + 1)).await;
         }
 
-        let totp_code = generate_current_totp(&creds.totp_seed)
+        let totp_code = generate_current_totp(&totp_seed)
             .map_err(|e| anyhow!("Failed to generate TOTP code: {}", e))?;
 
         log::info!("Submitting generated 6-digit TOTP code...");
@@ -623,7 +638,7 @@ pub async fn upload_assignment(
         let _ = client.post(&save_url).form(&confirm_fields).send().await;
     }
 
-    // Update assignment's status to 'submitted' in SQLite
+    // Update assignment's status to 'submitted' in SQLite and remove from tasks
     if let Some(db_pool) = pool {
         let _ = sqlx::query("UPDATE assignments SET status = 'submitted', updated_at = ? WHERE id = ?")
             .bind(chrono::Utc::now().to_rfc3339())
@@ -631,6 +646,14 @@ pub async fn upload_assignment(
             .execute(db_pool)
             .await;
         log::info!("Updated assignment {} status to 'submitted' in SQLite", assignment_id);
+
+        let task_id = format!("assign-task-{}", assignment_id);
+        let _ = sqlx::query("DELETE FROM tasks WHERE id = ? OR external_id = ?")
+            .bind(&task_id)
+            .bind(assignment_id)
+            .execute(db_pool)
+            .await;
+        log::info!("Removed completed assignment task {} from tasks table", task_id);
     }
 
     Ok(UploadResult {
@@ -646,19 +669,32 @@ pub async fn upload_assignment(
 // ==========================================
 
 pub async fn perform_titech_login(config_dir: &Path) -> Result<(Client, Arc<CookieStoreMutex>)> {
-    let creds = retrieve_credentials()?
-        .ok_or_else(|| anyhow!("No university credentials found in secure OS vault. Please save your credentials in Settings."))?;
+    let (username, password) = if let Ok(Some(ti)) = crate::auth::retrieve_titech_credentials() {
+        if !ti.username.is_empty() && !ti.password.is_empty() {
+            (ti.username, ti.password)
+        } else if let Ok(Some(creds)) = retrieve_credentials() {
+            (creds.username, creds.password)
+        } else {
+            (ti.username, ti.password)
+        }
+    } else if let Ok(Some(creds)) = retrieve_credentials() {
+        (creds.username, creds.password)
+    } else {
+        return Err(anyhow!("No Tokyo Tech portal credentials found in secure OS vault. Please save your Tokyo Tech credentials in Settings."));
+    };
 
-    if creds.username.is_empty() || creds.password.is_empty() {
+    if username.is_empty() || password.is_empty() {
         return Err(anyhow!("Tokyo Tech username or password is empty"));
     }
 
-    let matrix = if !creds.matrix_card.is_empty() {
-        creds.matrix_card.clone()
-    } else if let Ok(Some(m)) = crate::auth::retrieve_matrix_card() {
+    let matrix = if let Ok(Some(m)) = crate::auth::retrieve_matrix_card() {
         m
+    } else if let Ok(Some(ti)) = crate::auth::retrieve_titech_credentials() {
+        ti.matrix_card
+    } else if let Ok(Some(creds)) = retrieve_credentials() {
+        creds.matrix_card
     } else {
-        return Err(anyhow!("Tokyo Tech Matrix card (7x10) is not configured in Settings."));
+        return Err(anyhow!("Tokyo Tech Matrix card (10x7) is not configured in Settings."));
     };
 
     let clean_matrix: Vec<char> = matrix.chars().filter(|c| !c.is_whitespace()).collect();
@@ -666,7 +702,7 @@ pub async fn perform_titech_login(config_dir: &Path) -> Result<(Client, Arc<Cook
         return Err(anyhow!("Saved Matrix card must be exactly 70 characters (7 rows x 10 cols). Current length: {}", clean_matrix.len()));
     }
 
-    log::info!("Starting Tokyo Tech GetAccess portal login for user: {}", creds.username);
+    log::info!("Starting Tokyo Tech GetAccess portal login for user: {}", username);
 
     let cookie_store = Arc::new(CookieStoreMutex::new(CookieStore::default()));
     let client = build_client(cookie_store.clone())?;
@@ -697,10 +733,10 @@ pub async fn perform_titech_login(config_dir: &Path) -> Result<(Client, Arc<Cook
         let has_userpass = page_html.contains("usr_name") && page_html.contains("usr_password");
         if has_userpass && !password_sent {
             log::info!("Submitting GetAccess username (uppercase) and password...");
-            let upper_user = creds.username.to_ascii_uppercase();
+            let upper_user = username.to_ascii_uppercase();
             let (action, fields) = parse_form(&page_html, &page_url, "form[name=\"login\"], form", &[
                 ("usr_name", &upper_user),
-                ("usr_password", &creds.password),
+                ("usr_password", &password),
             ])?;
             password_sent = true;
 

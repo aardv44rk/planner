@@ -182,6 +182,9 @@
     --line-strong: #d1d1d6;
     --ink: #1c1c1e;
     --muted: #6d6d70;
+    --accent: #007aff;
+    --accent-hover: #0062cc;
+    --accent-soft: #e5f1ff;
   }
   :root[data-theme="cool"][data-appearance="dark"],
   .dark[data-theme="cool"] {
@@ -193,6 +196,9 @@
     --line-strong: #3a3a3c;
     --ink: #f2f2f7;
     --muted: #969699;
+    --accent: #0a84ff;
+    --accent-hover: #409cff;
+    --accent-soft: #143055;
   }
   :root[data-theme="paper"] {
     --bg: #f3eee4;
@@ -203,6 +209,9 @@
     --line-strong: #d2cabd;
     --ink: #2a241b;
     --muted: #767167;
+    --accent: #a85a32;
+    --accent-hover: #8f4b27;
+    --accent-soft: #fbeee7;
   }
   :root[data-theme="paper"][data-appearance="dark"],
   .dark[data-theme="paper"] {
@@ -214,6 +223,9 @@
     --line-strong: #403a31;
     --ink: #efe8dc;
     --muted: #9d978e;
+    --accent: #e08a5c;
+    --accent-hover: #e8a07a;
+    --accent-soft: #3d2417;
   }
   :root[data-theme="mist"] {
     --bg: #edf1f6;
@@ -224,6 +236,9 @@
     --line-strong: #c8d0d9;
     --ink: #17202b;
     --muted: #686f78;
+    --accent: #2b6cb0;
+    --accent-hover: #235890;
+    --accent-soft: #e8f1fa;
   }
   :root[data-theme="mist"][data-appearance="dark"],
   .dark[data-theme="mist"] {
@@ -235,6 +250,9 @@
     --line-strong: #353e49;
     --ink: #e6ecf3;
     --muted: #959aa1;
+    --accent: #63b3ed;
+    --accent-hover: #7fc3f3;
+    --accent-soft: #19324a;
   }
   :root[data-theme="moss"] {
     --bg: #eef2ec;
@@ -245,6 +263,9 @@
     --line-strong: #c8d0c5;
     --ink: #1b2219;
     --muted: #6b7169;
+    --accent: #24733f;
+    --accent-hover: #1c5e33;
+    --accent-soft: #e1f3e7;
   }
   :root[data-theme="moss"][data-appearance="dark"],
   .dark[data-theme="moss"] {
@@ -256,6 +277,22 @@
     --line-strong: #373f35;
     --ink: #e7eee4;
     --muted: #969c93;
+    --accent: #6fc48b;
+    --accent-hover: #88d4a0;
+    --accent-soft: #1e3526;
+  }
+  :root[data-theme="default"],
+  :root:not([data-theme]) {
+    --accent: #2f5fd0;
+    --accent-hover: #254eb0;
+    --accent-soft: #e6edfc;
+  }
+  :root[data-theme="default"][data-appearance="dark"],
+  .dark[data-theme="default"],
+  .dark:not([data-theme]) {
+    --accent: #6f95f0;
+    --accent-hover: #82a5f5;
+    --accent-soft: #23304d;
   }
 
   * {

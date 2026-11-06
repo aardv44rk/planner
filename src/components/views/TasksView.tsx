@@ -25,9 +25,9 @@ export const TasksView: React.FC = () => {
   const [selectedProject, setSelectedProject] = useState('LifeOS');
   const [selectedPriority, setSelectedPriority] = useState<TaskPriority>('medium');
   const [activeProjectFilter, setActiveProjectFilter] = useState<string>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'done'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'done'>('active');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<'created' | 'priority' | 'project'>('created');
+  const [sortBy, setSortBy] = useState<'due_date' | 'created' | 'priority' | 'project'>('due_date');
   const [isAdding, setIsAdding] = useState(false);
 
   // Compute Project statistics
@@ -66,6 +66,12 @@ export const TasksView: React.FC = () => {
 
   // Sort tasks
   const sortedTasks = [...filteredTasks].sort((a, b) => {
+    if (sortBy === 'due_date') {
+      if (!a.due_date && !b.due_date) return new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime();
+      if (!a.due_date) return 1;
+      if (!b.due_date) return -1;
+      return a.due_date.localeCompare(b.due_date);
+    }
     if (sortBy === 'priority') {
       const weight: Record<TaskPriority, number> = { high: 3, medium: 2, low: 1 };
       return (weight[b.priority] || 0) - (weight[a.priority] || 0);
@@ -137,9 +143,6 @@ export const TasksView: React.FC = () => {
                 {completedTasks}/{totalTasks} Completed ({progressPct}%)
               </span>
             </div>
-            <p className="text-[11px] text-tx-muted">
-              Centralized task manager with project categorization and priority alignment.
-            </p>
           </div>
         </div>
 
@@ -268,7 +271,8 @@ export const TasksView: React.FC = () => {
                   onChange={(e) => setSortBy(e.target.value as any)}
                   className="bg-surface border border-subtle rounded px-2 py-0.5 text-xs text-tx-primary focus:outline-none"
                 >
-                  <option value="created">Sort by Date</option>
+                  <option value="due_date">Sort by Due Date</option>
+                  <option value="created">Sort by Created Date</option>
                   <option value="priority">Sort by Priority</option>
                   <option value="project">Sort by Project</option>
                 </select>

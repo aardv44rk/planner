@@ -21,6 +21,13 @@ export const App: React.FC = () => {
     fetchLayout();
     refreshAll();
 
+    // Check if user enabled auto-sync LMS on startup
+    if (typeof window !== 'undefined' && localStorage.getItem('lifeos-auto-sync') === 'true') {
+      api.syncLms()
+        .then(() => refreshAll())
+        .catch((err) => console.warn('LMS Auto-sync on startup encountered an issue:', err));
+    }
+
     let unlisten: (() => void) | undefined;
     api.onMetricsUpdated(() => {
       fetchMetrics();

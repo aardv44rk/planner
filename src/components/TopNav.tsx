@@ -5,13 +5,13 @@ import { useCommandCenterStore } from '../stores/commandCenterStore';
 import { AppTab } from '../types';
 
 const tabTitles: Record<AppTab, string> = {
-  today: 'Today Workspace',
-  courses: 'Courses & LMS',
-  tasks: 'Tasks & Projects',
-  schedule: 'Calendar & Schedule',
-  notes: 'Notes & Vault',
-  habits: 'Habits & Metrics',
-  settings: 'Institutions & Settings',
+  today: 'Today',
+  courses: 'Courses',
+  tasks: 'Tasks',
+  schedule: 'Schedule',
+  notes: 'Notes',
+  habits: 'Habits',
+  settings: 'Settings',
 };
 
 export const TopNav: React.FC = () => {
@@ -38,11 +38,7 @@ export const TopNav: React.FC = () => {
     <header className="flex-shrink-0 w-full h-[42px] bg-transparent px-3.5 flex items-center justify-between select-none border-b border-subtle">
       {/* Left: Domain Breadcrumb & Date */}
       <div className="flex items-center space-x-2 text-xs">
-        <span className="font-semibold text-tx-primary tracking-tight">
-          LifeOS
-        </span>
-        <span className="text-muted text-xs">/</span>
-        <span className="text-tx-primary font-medium text-xs">
+        <span className="text-tx-primary font-semibold text-xs tracking-tight">
           {tabTitles[activeTab]}
         </span>
         <span className="text-muted text-xs">·</span>

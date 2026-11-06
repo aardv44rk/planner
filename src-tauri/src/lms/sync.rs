@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::BufReader;
 use std::path::Path;
 use std::sync::Arc;
@@ -63,6 +63,7 @@ pub struct ScrapedAssignmentDetails {
     pub description: Option<String>,
     pub due_date_text: Option<String>,
     pub handouts: Vec<HandoutItem>,
+    pub has_explicit_unsubmitted: bool,
 }
 
 /// Parses raw iCalendar (.ics) string using the `ical` crate.
@@ -847,22 +848,53 @@ pub async fn scrape_module_page(
         let doc = scraper::Html::parse_document(&html);
         let root = doc.root_element();
 
-        let (status, weight) = match module {
+        let (status, weight, has_explicit_unsubmitted) = match module {
             "assign" => {
                 let table_sel = scraper::Selector::parse(".submissionstatustable").unwrap();
+                let completion_sel = scraper::Selector::parse(r#"[data-region="completion-info"], [data-region="activity-information"] .badge, .activity-information .badge, .btn-success"#).unwrap();
+
+                let mut st = "pending".to_string();
+                let mut grade_opt = None;
+                let mut explicit_unsubmitted = false;
+
                 if let Some(table) = root.select(&table_sel).next() {
                     let graded_sel = scraper::Selector::parse("td.submissiongraded").unwrap();
                     let submitted_sel = scraper::Selector::parse("td.submissionstatussubmitted").unwrap();
-                    let st = if table.select(&graded_sel).next().is_some() {
-                        "graded".to_string()
+
+                    if table.select(&graded_sel).next().is_some() {
+                        st = "graded".to_string();
                     } else if table.select(&submitted_sel).next().is_some() {
-                        "submitted".to_string()
-                    } else {
-                        "pending".to_string()
-                    };
+                        st = "submitted".to_string();
+                    }
+
+                    // Inspect cell texts in .submissionstatustable
+                    let cell_sel = scraper::Selector::parse("td, th").unwrap();
+                    for cell in table.select(&cell_sel) {
+                        let text = cell.text().collect::<String>().trim().to_string();
+                        let text_lower = text.to_lowercase();
+                        if text_lower.contains("submitted for grading")
+                            || text.contains("提出済み")
+                            || text_lower.contains("grading status: graded")
+                            || text.contains("評定済み")
+                        {
+                            if st != "graded" {
+                                if text_lower.contains("graded") || text.contains("評定済み") {
+                                    st = "graded".to_string();
+                                } else {
+                                    st = "submitted".to_string();
+                                }
+                            }
+                        }
+                        if text_lower.contains("no attempt")
+                            || text.contains("未提出")
+                            || text.contains("提出されていません")
+                        {
+                            explicit_unsubmitted = true;
+                        }
+                    }
 
                     let feedback_sel = scraper::Selector::parse(".feedback .feedbacktable table tr td").unwrap();
-                    let grade_opt = table
+                    grade_opt = table
                         .select(&feedback_sel)
                         .next()
                         .or_else(|| root.select(&feedback_sel).next())
@@ -875,23 +907,57 @@ pub async fn scrape_module_page(
                             }
                         });
 
-                    (st, grade_opt)
-                } else {
-                    ("pending".to_string(), None)
+                    if grade_opt.is_some() {
+                        st = "graded".to_string();
+                    }
                 }
+
+                // Check Moodle's activity completion badge on the page
+                for comp in root.select(&completion_sel) {
+                    let comp_text = comp.text().collect::<String>();
+                    let is_success_btn = comp.value().classes().any(|c| c == "btn-success" || c == "badge-success");
+                    if comp_text.contains("Done") || comp_text.contains("完了") || is_success_btn {
+                        if st == "pending" {
+                            st = "submitted".to_string();
+                        }
+                    }
+                }
+
+                (st, grade_opt, explicit_unsubmitted)
             }
             "quiz" => {
-                let attempt_sel = scraper::Selector::parse(".quizattempt").unwrap();
+                let attempt_sel = scraper::Selector::parse(".quizattempt, table.quizattemptsummary").unwrap();
+                let mut st = "pending".to_string();
+                let mut grade_str = None;
+                let mut explicit_unsubmitted = false;
+
                 if root.select(&attempt_sel).next().is_some() {
                     let summary_tr_sel = scraper::Selector::parse("table.quizreviewsummary tr").unwrap();
                     let tr_count = root.select(&summary_tr_sel).count();
-                    let finished = tr_count >= 3;
+                    let finished_by_tr = tr_count >= 3;
+
+                    // Also check page text for finished quiz
+                    let mut finished_by_text = false;
+                    for el in root.select(&attempt_sel) {
+                        let text = el.text().collect::<String>();
+                        if text.contains("State: Finished")
+                            || text.contains("状態: 終了")
+                            || text.contains("終了日時")
+                            || text.contains("Submitted")
+                            || text.contains("提出")
+                        {
+                            finished_by_text = true;
+                            break;
+                        }
+                        if text.contains("未受験") || text.contains("No attempt") {
+                            explicit_unsubmitted = true;
+                        }
+                    }
 
                     let feedback_h3_sel = scraper::Selector::parse("#feedback h3").unwrap();
                     static PAIR_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
                     let re = PAIR_RE.get_or_init(|| regex::Regex::new(r"(\d[\d.,]*)\s*/\s*(\d[\d.,]*)").unwrap());
 
-                    let mut grade_str = None;
                     for h3 in root.select(&feedback_h3_sel) {
                         let text = h3.text().collect::<String>();
                         if let Some(caps) = re.captures(&text) {
@@ -903,17 +969,27 @@ pub async fn scrape_module_page(
                     }
 
                     if grade_str.is_some() {
-                        ("graded".to_string(), grade_str)
-                    } else if finished {
-                        ("submitted".to_string(), None)
-                    } else {
-                        ("pending".to_string(), None)
+                        st = "graded".to_string();
+                    } else if finished_by_tr || finished_by_text {
+                        st = "submitted".to_string();
                     }
-                } else {
-                    ("pending".to_string(), None)
                 }
+
+                // Check completion badge as well
+                let completion_sel = scraper::Selector::parse(r#"[data-region="completion-info"], [data-region="activity-information"] .badge, .activity-information .badge, .btn-success"#).unwrap();
+                for comp in root.select(&completion_sel) {
+                    let comp_text = comp.text().collect::<String>();
+                    let is_success_btn = comp.value().classes().any(|c| c == "btn-success" || c == "badge-success");
+                    if comp_text.contains("Done") || comp_text.contains("完了") || is_success_btn {
+                        if st == "pending" {
+                            st = "submitted".to_string();
+                        }
+                    }
+                }
+
+                (st, grade_str, explicit_unsubmitted)
             }
-            _ => ("pending".to_string(), None),
+            _ => ("pending".to_string(), None, false),
         };
 
         // Instructions and Dates from [data-region="activity-dates"] and #intro
@@ -1023,6 +1099,7 @@ pub async fn scrape_module_page(
             description,
             due_date_text: page_due_date,
             handouts,
+            has_explicit_unsubmitted,
         }
     };
 
@@ -1033,8 +1110,9 @@ pub async fn scrape_module_page(
 pub async fn fetch_all_calendar_deadlines(
     client: &reqwest::Client,
     sesskey: &str,
-) -> HashMap<u64, CalendarDeadline> {
+) -> (HashMap<u64, CalendarDeadline>, HashSet<u64>) {
     let mut deadlines = HashMap::new();
+    let mut actionable_cmids = HashSet::new();
 
     // 1. Action events by timesort
     if let Ok(action_data) = call_moodle_ajax(
@@ -1057,6 +1135,7 @@ pub async fn fetch_all_calendar_deadlines(
                     .or_else(|| ev.get("instance").and_then(Value::as_u64));
 
                 if let Some(id) = cmid {
+                    actionable_cmids.insert(id);
                     let timesort = ev
                         .get("timesort")
                         .or_else(|| ev.get("timestart"))
@@ -1243,7 +1322,7 @@ pub async fn fetch_all_calendar_deadlines(
         }
     }
 
-    deadlines
+    (deadlines, actionable_cmids)
 }
 
 /// Fetches real enrolled courses and assignments from Science Tokyo LMS via Moodle Web Services API.
@@ -1283,11 +1362,31 @@ pub async fn fetch_real_lms_courses_and_assignments(
     log::info!("Discovered {} courses on Science Tokyo LMS", course_items.len());
 
     // 2. Fetch complete deadlines from Action Events, Upcoming View & Monthly Calendar
-    let calendar_deadlines = fetch_all_calendar_deadlines(client, sesskey).await;
+    let (calendar_deadlines, actionable_cmids) = fetch_all_calendar_deadlines(client, sesskey).await;
     log::info!(
-        "Discovered {} calendar assignment/quiz deadlines across Moodle calendar feeds",
-        calendar_deadlines.len()
+        "Discovered {} calendar assignment/quiz deadlines across Moodle calendar feeds ({} actionable)",
+        calendar_deadlines.len(),
+        actionable_cmids.len()
     );
+
+    // Track active quarter courses to prioritize for scraping
+    let mut active_course_ids = HashSet::new();
+    for (cid, info) in timetable_map {
+        if info.quarters.iter().any(|q| q == active_quarter) {
+            active_course_ids.insert(*cid);
+        }
+    }
+    for c in course_items {
+        let cid = c.get("id").and_then(Value::as_u64).unwrap_or(0);
+        let fullname = c.get("fullname").and_then(Value::as_str).unwrap_or("");
+        let shortname = c.get("shortname").and_then(Value::as_str).unwrap_or("");
+        let code = parse_course_code(shortname);
+        let title = clean_course_title(&decode_entities(fullname));
+        let q = parse_course_quarter(c, &title, &code, active_quarter);
+        if q == active_quarter {
+            active_course_ids.insert(cid);
+        }
+    }
 
     // 3. For each course, fetch course outline state via core_courseformat_get_state
     // parsing double-encoded JSON and collecting target assign/quiz modules for page scraping
@@ -1298,7 +1397,7 @@ pub async fn fetch_real_lms_courses_and_assignments(
     }
 
     let mut course_modules_map: HashMap<u64, Vec<RawCourseModule>> = HashMap::new();
-    let mut all_scrape_targets: Vec<(u64, String)> = Vec::new();
+    let mut all_scrape_targets: Vec<(u64, String, u64)> = Vec::new();
 
     for c in course_items {
         let course_id_num = c.get("id").and_then(Value::as_u64).unwrap_or(0);
@@ -1353,8 +1452,8 @@ pub async fn fetch_real_lms_courses_and_assignments(
                             name,
                         });
 
-                        if !all_scrape_targets.iter().any(|(id, _)| *id == cmid) {
-                            all_scrape_targets.push((cmid, module));
+                        if !all_scrape_targets.iter().any(|(id, _, _)| *id == cmid) {
+                            all_scrape_targets.push((cmid, module, course_id_num));
                         }
                     }
                 }
@@ -1362,12 +1461,32 @@ pub async fn fetch_real_lms_courses_and_assignments(
         }
     }
 
+    // Also include any cmid found in calendar_deadlines in scrape targets
+    for (cmid, dl) in &calendar_deadlines {
+        if !all_scrape_targets.iter().any(|(id, _, _)| id == cmid) {
+            all_scrape_targets.push((*cmid, "assign".to_string(), dl.course_id));
+        }
+    }
+
+    // Prioritize scraping active quarter courses and calendar deadlines
+    all_scrape_targets.sort_by_key(|(cmid, _, cid)| {
+        let is_active = active_course_ids.contains(cid);
+        let is_cal = calendar_deadlines.contains_key(cmid);
+        if is_active {
+            0
+        } else if is_cal {
+            1
+        } else {
+            2
+        }
+    });
+
     // 4. Concurrently scrape assignment details (instructions, handouts, submission status, grade)
-    // for up to 30 modules using tokio::task::JoinSet with bounded concurrency
-    let sem = Arc::new(Semaphore::new(8));
+    // for up to 120 modules with Semaphore(10) so active assignments are never skipped
+    let sem = Arc::new(Semaphore::new(10));
     let mut set = tokio::task::JoinSet::new();
 
-    for (cmid, module) in all_scrape_targets.into_iter().take(30) {
+    for (cmid, module, _) in all_scrape_targets.into_iter().take(120) {
         let client_clone = client.clone();
         let sem_clone = sem.clone();
         set.spawn(async move {
@@ -1444,11 +1563,20 @@ pub async fn fetch_real_lms_courses_and_assignments(
                 m.name.clone()
             };
 
-            let status = if let Some(sc) = sc_opt {
+            let mut status = if let Some(sc) = sc_opt {
                 sc.status.clone()
             } else {
                 "pending".to_string()
             };
+
+            let now_ts = Utc::now().timestamp();
+            let is_past_due = dl_opt.map(|dl| dl.timesort > 0 && dl.timesort < now_ts).unwrap_or(false);
+            let is_explicit_unsubmitted = sc_opt.map(|sc| sc.has_explicit_unsubmitted).unwrap_or(false);
+
+            // Cross-check: If past-due assignment is NOT in actionable_cmids, and scraping didn't find "No attempt", it is submitted!
+            if status == "pending" && is_past_due && !actionable_cmids.contains(&m.cmid) && !is_explicit_unsubmitted {
+                status = "submitted".to_string();
+            }
 
             let weight = if let Some(sc) = sc_opt {
                 if let Some(w) = &sc.weight {
@@ -1486,7 +1614,7 @@ pub async fn fetch_real_lms_courses_and_assignments(
                 format!("Activity in {}", title)
             };
 
-            let (due_date, due_text) = if let Some(dl) = dl_opt {
+            let (due_date, mut due_text) = if let Some(dl) = dl_opt {
                 (dl.due_date.clone(), dl.due_text.clone())
             } else if let Some(sc) = sc_opt {
                 if let Some(d_text) = &sc.due_date_text {
@@ -1497,6 +1625,12 @@ pub async fn fetch_real_lms_courses_and_assignments(
             } else {
                 ("Active in Course Outline".to_string(), "Course Task".to_string())
             };
+
+            if status == "graded" {
+                due_text = "Graded".to_string();
+            } else if status == "submitted" {
+                due_text = "Submitted".to_string();
+            }
 
             let handout_name = if let Some(sc) = sc_opt {
                 if !sc.handouts.is_empty() {
@@ -1528,11 +1662,26 @@ pub async fn fetch_real_lms_courses_and_assignments(
                 let cmid_str = cmid.to_string();
                 if !assignments.iter().any(|a| a.id == cmid_str) {
                     let sc_opt = scraped_map.get(cmid);
-                    let status = if let Some(sc) = sc_opt {
+                    let mut status = if let Some(sc) = sc_opt {
                         sc.status.clone()
                     } else {
                         "pending".to_string()
                     };
+
+                    let now_ts = Utc::now().timestamp();
+                    let is_past_due = dl.timesort > 0 && dl.timesort < now_ts;
+                    let is_explicit_unsubmitted = sc_opt.map(|sc| sc.has_explicit_unsubmitted).unwrap_or(false);
+
+                    if status == "pending" && is_past_due && !actionable_cmids.contains(cmid) && !is_explicit_unsubmitted {
+                        status = "submitted".to_string();
+                    }
+
+                    let mut due_text = dl.due_text.clone();
+                    if status == "graded" {
+                        due_text = "Graded".to_string();
+                    } else if status == "submitted" {
+                        due_text = "Submitted".to_string();
+                    }
                     let weight = if let Some(sc) = sc_opt {
                         sc.weight.clone().unwrap_or_else(|| "LMS Activity".to_string())
                     } else {
@@ -1566,7 +1715,7 @@ pub async fn fetch_real_lms_courses_and_assignments(
                         course_id: course_id_str.clone(),
                         title: dl.title.clone(),
                         due_date: dl.due_date.clone(),
-                        due_text: dl.due_text.clone(),
+                        due_text,
                         status,
                         weight,
                         description,
@@ -1643,7 +1792,7 @@ pub async fn sync_courses_and_tasks(config_dir: &Path, pool: &SqlitePool) -> Res
     };
 
     if !courses_to_save.is_empty() {
-        upsert_courses(pool, &courses_to_save).await?;
+        upsert_courses(pool, &courses_to_save, &academic_year, &active_quarter).await?;
     }
 
     // 3. Populate SQLite schedule_blocks with real lectures for all 4 quarters (1Q-4Q)
@@ -1734,47 +1883,10 @@ pub async fn sync_courses_and_tasks(config_dir: &Path, pool: &SqlitePool) -> Res
 
     log::info!("Generated {} real lecture timetable blocks in calendar for {}", lecture_blocks_count, active_quarter);
 
-    // 4. Fetch .ics calendar feed for deadlines if available
-    let calendar_resp = client.get(CALENDAR_EXPORT_URL).send().await;
-    let events = match calendar_resp {
-        Ok(resp) if resp.status().is_success() => {
-            let ics_text = resp.text().await.unwrap_or_default();
-            parse_ics(&ics_text)
-        }
-        _ => Vec::new(),
-    };
-
-    let mut tasks_synced = 0;
-    for ev in &events {
-        if ev.is_deadline {
-            let task_id = format!("isct-task-{}", ev.uid);
-            let created_at = chrono::Utc::now().to_rfc3339();
-            let due_date = if !ev.end_date.is_empty() {
-                Some(ev.end_date.clone())
-            } else {
-                Some(ev.start_date.clone())
-            };
-
-            let _ = sqlx::query(
-                r#"
-                INSERT INTO tasks (id, title, project, status, priority, due_date, completed, created_at, source, external_id)
-                VALUES (?, ?, 'Science Tokyo', 'todo', 'high', ?, 0, ?, 'science_tokyo', ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    title = excluded.title,
-                    due_date = excluded.due_date
-                "#,
-            )
-            .bind(&task_id)
-            .bind(&ev.summary)
-            .bind(&due_date)
-            .bind(&created_at)
-            .bind(&ev.uid)
-            .execute(pool)
-            .await;
-
-            tasks_synced += 1;
-        }
-    }
+    // Wipe any legacy isct-task-* rows so raw .ics entries never duplicate or pollute tasks
+    let _ = sqlx::query("DELETE FROM tasks WHERE id LIKE 'isct-task-%'")
+        .execute(pool)
+        .await;
 
     let total_assignments: usize = courses_to_save.iter().map(|c| c.assignments.len()).sum();
     let summary = format!(
@@ -1783,14 +1895,63 @@ pub async fn sync_courses_and_tasks(config_dir: &Path, pool: &SqlitePool) -> Res
         timetable_map.values().filter(|i| i.quarters.iter().any(|q| q == &active_quarter)).count(),
         active_quarter,
         total_assignments,
-        lecture_blocks_count + tasks_synced
+        lecture_blocks_count
     );
     log::info!("{}", summary);
     Ok(summary)
 }
 
-pub async fn upsert_courses(pool: &SqlitePool, courses: &[Course]) -> Result<()> {
+pub fn is_current_or_future_term(term: &str, active_year: &str, active_quarter: &str) -> bool {
+    let quarter_order = |q: &str| -> i32 {
+        if q.contains("1Q") { 1 }
+        else if q.contains("2Q") { 2 }
+        else if q.contains("3Q") { 3 }
+        else if q.contains("4Q") { 4 }
+        else { 0 }
+    };
+
+    let active_q_num = quarter_order(active_quarter);
+    let active_y_num = active_year.parse::<i32>().unwrap_or(0);
+
+    let term_year = if let Some(dash_idx) = term.find('-') {
+        term[..dash_idx].trim().parse::<i32>().unwrap_or(active_y_num)
+    } else {
+        active_y_num
+    };
+
+    if term_year < active_y_num {
+        return false;
+    }
+    if term_year > active_y_num {
+        return true;
+    }
+
+    let mut max_q = 0;
+    for q_candidate in ["4Q", "3Q", "2Q", "1Q"] {
+        if term.contains(q_candidate) {
+            max_q = max_q.max(quarter_order(q_candidate));
+        }
+    }
+
+    if max_q > 0 {
+        max_q >= active_q_num
+    } else {
+        true
+    }
+}
+
+pub async fn upsert_courses(
+    pool: &SqlitePool,
+    courses: &[Course],
+    active_year: &str,
+    active_quarter: &str,
+) -> Result<()> {
     let now = chrono::Utc::now().to_rfc3339();
+
+    // Wipe all previous tasks from Science Tokyo so no stale past-quarter tasks or .ics duplicates remain
+    let _ = sqlx::query("DELETE FROM tasks WHERE source = 'science_tokyo' OR id LIKE 'isct-task-%'")
+        .execute(pool)
+        .await;
 
     for course in courses {
         sqlx::query(
@@ -1825,9 +1986,6 @@ pub async fn upsert_courses(pool: &SqlitePool, courses: &[Course]) -> Result<()>
             .bind(&course.id)
             .execute(pool)
             .await;
-        let _ = sqlx::query("DELETE FROM tasks WHERE source = 'science_tokyo' AND id LIKE 'assign-task-assign-%'")
-            .execute(pool)
-            .await;
 
         // Clean up any stale assignments for this course that are no longer present
         if !course.assignments.is_empty() {
@@ -1842,6 +2000,8 @@ pub async fn upsert_courses(pool: &SqlitePool, courses: &[Course]) -> Result<()>
             }
             let _ = query.execute(pool).await;
         }
+
+        let is_active_or_future_course = is_current_or_future_term(&course.term, active_year, active_quarter);
 
         for a in &course.assignments {
             sqlx::query(
@@ -1872,26 +2032,45 @@ pub async fn upsert_courses(pool: &SqlitePool, courses: &[Course]) -> Result<()>
             .execute(pool)
             .await?;
 
-            // Also mirror assignment to Tasks table
+            // Only mirror an assignment into tasks if its course matches current or future quarter AND has a real due date
+            let has_real_due_date = !a.due_date.is_empty()
+                && a.due_date != "Active in Course Outline"
+                && a.due_date != "No due date"
+                && a.due_date != "TBA";
+
+            let is_completed = a.status == "submitted" || a.status == "graded";
             let task_id = format!("assign-task-{}", a.id);
-            let date_only = a.due_date.split(' ').next().unwrap_or(&a.due_date);
-            let _ = sqlx::query(
-                r#"
-                INSERT INTO tasks (id, title, project, status, priority, due_date, completed, created_at, source, external_id)
-                VALUES (?, ?, ?, 'todo', 'high', ?, 0, ?, 'science_tokyo', ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    title = excluded.title,
-                    due_date = excluded.due_date
-                "#,
-            )
-            .bind(&task_id)
-            .bind(&format!("{}: {}", course.code, a.title))
-            .bind(&course.title)
-            .bind(date_only)
-            .bind(&now)
-            .bind(&a.id)
-            .execute(pool)
-            .await;
+
+            if is_completed {
+                // If submitted or graded, DO NOT insert it into tasks. Remove any existing task row immediately.
+                let _ = sqlx::query("DELETE FROM tasks WHERE id = ? OR external_id = ?")
+                    .bind(&task_id)
+                    .bind(&a.id)
+                    .execute(pool)
+                    .await;
+            } else if is_active_or_future_course && has_real_due_date {
+                let date_only = a.due_date.split(' ').next().unwrap_or(&a.due_date);
+
+                let _ = sqlx::query(
+                    r#"
+                    INSERT INTO tasks (id, title, project, status, priority, due_date, completed, created_at, source, external_id)
+                    VALUES (?, ?, ?, 'todo', 'high', ?, 0, ?, 'science_tokyo', ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        title = excluded.title,
+                        status = excluded.status,
+                        due_date = excluded.due_date,
+                        completed = excluded.completed
+                    "#,
+                )
+                .bind(&task_id)
+                .bind(&format!("{}: {}", course.code, a.title))
+                .bind(&course.title)
+                .bind(date_only)
+                .bind(&now)
+                .bind(&a.id)
+                .execute(pool)
+                .await;
+            }
         }
     }
 
@@ -1903,6 +2082,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[ignore = "requires live LMS session cookie and network access"]
     async fn test_live_sync_execution() {
         let config_dir = crate::config::get_app_config_dir().unwrap();
         if !config_dir.join("session.cookie").exists() {

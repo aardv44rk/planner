@@ -224,7 +224,7 @@ export const CoursesWorkspace: React.FC = () => {
             <div className="flex items-center space-x-2 min-w-0 pr-2">
               <BookOpen className="w-4 h-4 stroke-[1.75] text-accent flex-shrink-0" />
               <span className="text-[12px] font-semibold text-tx-primary truncate tracking-tight">
-                Courses & Tokyo LMS
+                Courses
               </span>
             </div>
 
@@ -395,11 +395,8 @@ export const CoursesWorkspace: React.FC = () => {
               <div className="flex flex-col items-center justify-center h-64 p-6 text-center space-y-3">
                 <BookOpen className="w-8 h-8 text-muted opacity-50" />
                 <div className="text-xs font-semibold text-tx-primary">
-                  {searchQuery ? 'No courses match your search' : 'No Courses Loaded from LMS'}
+                  {searchQuery ? 'No courses match your search' : 'No Courses Loaded'}
                 </div>
-                <p className="text-[11px] text-muted max-w-xs leading-relaxed">
-                  Click below to synchronize your active courses, assignments, and calendar feeds directly from Science Tokyo Moodle.
-                </p>
                 <Button
                   variant="filled"
                   size="sm"
@@ -407,7 +404,7 @@ export const CoursesWorkspace: React.FC = () => {
                   onClick={handleSyncLms}
                 >
                   <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-                  Sync Science Tokyo LMS
+                  Sync LMS
                 </Button>
               </div>
             ) : coursesToRender.length === 0 ? (
@@ -476,12 +473,6 @@ export const CoursesWorkspace: React.FC = () => {
                           <span className="font-mono text-accent font-semibold">{course.term}</span>
                           <span>•</span>
                           <span className="truncate">{course.schedule || 'On-Demand'}</span>
-                          {course.room && course.room !== 'Science Tokyo LMS' && (
-                            <>
-                              <span>•</span>
-                              <span className="truncate">{course.room}</span>
-                            </>
-                          )}
                         </div>
                       </div>
 
@@ -571,6 +562,22 @@ export const CoursesWorkspace: React.FC = () => {
                   ? `${selectedCourse.code}: ${selectedAssignment ? selectedAssignment.title : selectedCourse.title}`
                   : 'Courses & LMS Workspace'}
               </span>
+              {selectedCourse && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const url = selectedAssignment
+                      ? `https://lms.s.isct.ac.jp/2025/mod/assign/view.php?id=${selectedAssignment.id}`
+                      : `https://lms.s.isct.ac.jp/2025/course/view.php?id=${selectedCourse.id}`;
+                    api.openUrl(url);
+                  }}
+                  className="p-1 rounded text-muted hover:text-tx-primary hover:bg-surface transition-colors cursor-pointer shrink-0"
+                  title="Open in LMS (Browser)"
+                  aria-label="Open in LMS"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 stroke-[1.75]" />
+                </button>
+              )}
             </div>
 
             {/* Segmented Workspace Tabs */}
@@ -605,13 +612,8 @@ export const CoursesWorkspace: React.FC = () => {
           {/* Main Content Area */}
           {!selectedCourse ? (
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-muted space-y-3 bg-surface">
-              <GraduationCap className="w-12 h-12 text-accent opacity-60" />
-              <div>
-                <h3 className="text-sm font-semibold text-tx-primary">Science Tokyo Courses Workspace</h3>
-                <p className="text-xs text-muted max-w-sm mt-1">
-                  Synchronize with your university portal to inspect course outlines, track assignment deadlines, and submit homework directly.
-                </p>
-              </div>
+              <GraduationCap className="w-10 h-10 text-accent opacity-60" />
+              <div className="text-xs font-semibold text-tx-primary">No Course Selected</div>
               <Button
                 variant="filled"
                 size="sm"
@@ -619,7 +621,7 @@ export const CoursesWorkspace: React.FC = () => {
                 onClick={handleSyncLms}
               >
                 <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-                Sync University LMS Now
+                Sync LMS
               </Button>
             </div>
           ) : (
@@ -633,8 +635,12 @@ export const CoursesWorkspace: React.FC = () => {
                         <span>{selectedCourse.code}</span>
                         <span>•</span>
                         <span>{selectedCourse.term}</span>
-                        <span>•</span>
-                        <span>{selectedCourse.room}</span>
+                        {selectedCourse.room && selectedCourse.room !== 'Science Tokyo LMS' && (
+                          <>
+                            <span>•</span>
+                            <span>{selectedCourse.room}</span>
+                          </>
+                        )}
                       </div>
                       <h1 className="text-lg font-bold text-tx-primary tracking-tight">
                         {selectedAssignment ? selectedAssignment.title : selectedCourse.title}
@@ -787,22 +793,6 @@ export const CoursesWorkspace: React.FC = () => {
                       <span className="text-[11px] text-muted mt-1">
                         Accepts PDF, ZIP, TAR.GZ, or source files
                       </span>
-                    </div>
-
-                    {/* Native OS File Dialog Option */}
-                    <div className="flex items-center justify-between p-3 rounded-[var(--radius-control)] bg-surface-2 border border-subtle text-xs">
-                      <div className="flex items-center space-x-2">
-                        <FileText className="w-4 h-4 text-accent stroke-[1.75]" />
-                        <span className="text-muted">Or pick file directly from your computer:</span>
-                      </div>
-                      <Button
-                        variant="subtle"
-                        size="sm"
-                        loading={isSubmitting}
-                        onClick={handlePickFile}
-                      >
-                        Open OS File Picker
-                      </Button>
                     </div>
 
                     {/* File Selected Status Card */}

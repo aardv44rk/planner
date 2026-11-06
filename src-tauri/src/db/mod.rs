@@ -306,7 +306,7 @@ async fn seed_if_empty(pool: &SqlitePool) -> Result<(), sqlx::Error> {
 // Tasks queries
 pub async fn get_all_tasks(pool: &SqlitePool) -> Result<Vec<Task>, sqlx::Error> {
     sqlx::query_as::<_, Task>(
-        "SELECT id, title, project, status, priority, due_date, completed, created_at FROM tasks ORDER BY completed ASC, created_at DESC"
+        "SELECT id, title, project, status, priority, due_date, completed, created_at FROM tasks ORDER BY completed ASC, CASE WHEN due_date IS NULL OR due_date = '' THEN 1 ELSE 0 END ASC, due_date ASC, created_at DESC"
     )
     .fetch_all(pool)
     .await

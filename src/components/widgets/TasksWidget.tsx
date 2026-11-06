@@ -13,7 +13,7 @@ export const TasksWidget: React.FC = () => {
   const [newTitle, setNewTitle] = useState('');
   const [selectedProject, setSelectedProject] = useState('LifeOS');
   const [selectedPriority, setSelectedPriority] = useState<TaskPriority>('medium');
-  const [filter, setFilter] = useState<'all' | 'active' | 'done'>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | 'done'>('active');
   const [isAdding, setIsAdding] = useState(false);
 
   const filteredTasks = tasks.filter((t) => {

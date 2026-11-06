@@ -49,6 +49,16 @@ export interface CredentialStatus {
   has_totp: boolean;
   has_matrix: boolean;
   session_cached: boolean;
+
+  // Science Tokyo Profile
+  science_username?: string | null;
+  has_science_username?: boolean;
+  has_science_password?: boolean;
+
+  // Tokyo Tech Profile
+  titech_username?: string | null;
+  has_titech_username?: boolean;
+  has_titech_password?: boolean;
 }
 
 export interface QuickNote {

@@ -576,7 +576,7 @@ export const ScheduleWidget: React.FC<ScheduleWidgetProps> = ({
           <div className="flex-shrink-0 flex items-center justify-between pb-2 border-b border-subtle/50">
             <div className="flex items-center space-x-1.5">
               <span className="text-[11px] font-semibold text-tx-primary">
-                Science Tokyo LMS Timetable
+                Timetable
               </span>
               <span className="text-[10px] font-mono text-muted">
                 {selectedQuarter === 'All' ? 'Full Academic Year' : `Quarter ${selectedQuarter}`}
@@ -708,7 +708,7 @@ export const ScheduleWidget: React.FC<ScheduleWidgetProps> = ({
             <div className="p-3 rounded-[var(--radius-control)] border border-subtle bg-surface space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-tx-primary">
-                  On-Demand, Projects & Unscheduled Courses
+                  Other / Intensive
                 </span>
                 <span className="text-[10px] text-muted font-mono">
                   {

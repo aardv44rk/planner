@@ -320,6 +320,16 @@ pub struct CredentialStatus {
     pub has_totp: bool,
     pub has_matrix: bool,
     pub session_cached: bool,
+
+    // Science Tokyo Profile
+    pub science_username: Option<String>,
+    pub has_science_username: bool,
+    pub has_science_password: bool,
+
+    // Tokyo Tech Profile
+    pub titech_username: Option<String>,
+    pub has_titech_username: bool,
+    pub has_titech_password: bool,
 }
 
 #[tauri::command]
@@ -339,6 +349,36 @@ pub async fn save_credentials(
 }
 
 #[tauri::command]
+pub async fn save_science_credentials(
+    username: String,
+    password: String,
+    totp_seed: String,
+) -> Result<(), String> {
+    crate::auth::store_science_credentials(&username, &password, &totp_seed)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn save_titech_credentials(
+    username: String,
+    password: String,
+    matrix_card: String,
+) -> Result<(), String> {
+    crate::auth::store_titech_credentials(&username, &password, &matrix_card)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn clear_science_credentials() -> Result<(), String> {
+    crate::auth::clear_science_credentials().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn clear_titech_credentials() -> Result<(), String> {
+    crate::auth::clear_titech_credentials().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn save_matrix_card(matrix: String) -> Result<(), String> {
     crate::auth::store_matrix_card(&matrix).map_err(|e| e.to_string())
 }
@@ -346,28 +386,80 @@ pub async fn save_matrix_card(matrix: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn get_credential_status(state: State<'_, Arc<AppState>>) -> Result<CredentialStatus, String> {
     let creds = crate::auth::retrieve_credentials().map_err(|e| e.to_string())?;
+    let sci_creds = crate::auth::retrieve_science_credentials().unwrap_or(None);
+    let ti_creds = crate::auth::retrieve_titech_credentials().unwrap_or(None);
     let totp_seed = crate::auth::retrieve_totp_seed().unwrap_or(None);
     let matrix_card = crate::auth::retrieve_matrix_card().unwrap_or(None);
     let session_cached = crate::lms::load_session(&state.config_dir)
         .map(|opt| opt.is_some())
         .unwrap_or(false);
 
-    let has_username = creds.as_ref().map(|c| !c.username.is_empty()).unwrap_or(false);
-    let has_password = creds.as_ref().map(|c| !c.password.is_empty()).unwrap_or(false);
+    let has_science_username = sci_creds.as_ref().map(|c| !c.username.is_empty()).unwrap_or(false)
+        || creds.as_ref().map(|c| !c.username.is_empty()).unwrap_or(false);
+    let has_science_password = sci_creds.as_ref().map(|c| !c.password.is_empty()).unwrap_or(false)
+        || creds.as_ref().map(|c| !c.password.is_empty()).unwrap_or(false);
+    let science_username = sci_creds.as_ref().map(|c| c.username.clone())
+        .or_else(|| creds.as_ref().map(|c| c.username.clone()));
+
+    let has_titech_username = ti_creds.as_ref().map(|c| !c.username.is_empty()).unwrap_or(false);
+    let has_titech_password = ti_creds.as_ref().map(|c| !c.password.is_empty()).unwrap_or(false);
+    let titech_username = ti_creds.as_ref().map(|c| c.username.clone());
+
     let has_totp = totp_seed.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
+        || sci_creds.as_ref().map(|c| !c.totp_seed.is_empty()).unwrap_or(false)
         || creds.as_ref().map(|c| !c.totp_seed.is_empty()).unwrap_or(false);
     let has_matrix = matrix_card.as_ref().map(|m| !m.is_empty()).unwrap_or(false)
+        || ti_creds.as_ref().map(|c| !c.matrix_card.is_empty()).unwrap_or(false)
         || creds.as_ref().map(|c| !c.matrix_card.is_empty()).unwrap_or(false);
 
+    let has_username = has_science_username || has_titech_username;
+    let has_password = has_science_password || has_titech_password;
+    let configured = has_science_username || has_titech_username || has_totp || has_matrix;
+
     Ok(CredentialStatus {
-        configured: creds.is_some() && (has_username || has_totp || has_matrix),
-        username: creds.as_ref().map(|c| c.username.clone()),
+        configured,
+        username: science_username.clone().or_else(|| titech_username.clone()),
         has_username,
         has_password,
         has_totp,
         has_matrix,
         session_cached,
+        science_username,
+        has_science_username,
+        has_science_password,
+        titech_username,
+        has_titech_username,
+        has_titech_password,
     })
+}
+
+#[tauri::command]
+pub async fn open_url(url: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        let _ = Command::new("cmd")
+            .args(["/C", "start", "", &url])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        let _ = Command::new("open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        use std::process::Command;
+        let _ = Command::new("xdg-open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]

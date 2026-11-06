@@ -87,9 +87,6 @@ export const NotesView: React.FC = () => {
                 {selectedDate}
               </span>
             </div>
-            <p className="text-[11px] text-tx-muted">
-              Daily scratchpads, persistent vault markdown notes, and quick thought captures.
-            </p>
           </div>
         </div>
 
