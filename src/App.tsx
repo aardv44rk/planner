@@ -43,32 +43,28 @@ const AppShell: React.FC = () => {
   const { activeTab, setActiveTab, fetchLayout } = useLayoutStore();
   const { refreshAll, fetchMetrics } = useCommandCenterStore();
 
+  const currentTab: AppTab = tab && VALID_TABS.includes(tab as AppTab) ? (tab as AppTab) : 'today';
+
   // Retain set of visited workspaces to prevent unmounting inactive views
   const [visitedTabs, setVisitedTabs] = useState<Set<AppTab>>(() => {
     const initial = tab && VALID_TABS.includes(tab as AppTab) ? (tab as AppTab) : activeTab;
     return new Set(['today', initial]);
   });
 
-  // Sync route URL parameter with activeTab in layoutStore
+  // Sync route URL parameter with activeTab in layoutStore without feedback loops
   useEffect(() => {
     if (tab && VALID_TABS.includes(tab as AppTab)) {
       const targetTab = tab as AppTab;
-      if (activeTab !== targetTab) {
+      if (useLayoutStore.getState().activeTab !== targetTab) {
         setActiveTab(targetTab);
       }
       setVisitedTabs((prev) => new Set(prev).add(targetTab));
     } else if (!tab) {
-      navigate('/today', { replace: true });
+      const savedTab = useLayoutStore.getState().activeTab;
+      const fallback = savedTab && VALID_TABS.includes(savedTab) ? savedTab : 'today';
+      navigate(`/${fallback}`, { replace: true });
     }
-  }, [tab, activeTab, setActiveTab, navigate]);
-
-  // Sync route whenever activeTab changes from UI actions (sidebar clicks, shortcuts)
-  useEffect(() => {
-    if (tab !== activeTab) {
-      navigate(`/${activeTab}`, { replace: true });
-    }
-    setVisitedTabs((prev) => new Set(prev).add(activeTab));
-  }, [activeTab, tab, navigate]);
+  }, [tab, setActiveTab, navigate]);
 
   // Startup lifecycle, metrics events, and LMS auto-sync
   useEffect(() => {
@@ -99,7 +95,7 @@ const AppShell: React.FC = () => {
   const keep = (tabId: AppTab, component: ReactNode) => {
     if (!visitedTabs.has(tabId)) return null;
     return (
-      <KeptPage visible={activeTab === tabId} key={tabId} name={tabId}>
+      <KeptPage visible={currentTab === tabId} key={tabId} name={tabId}>
         <PageErrorBoundary name={tabId}>{component}</PageErrorBoundary>
       </KeptPage>
     );
@@ -115,7 +111,7 @@ const AppShell: React.FC = () => {
         <TopNav />
         <main
           className={`flex-1 w-full min-h-0 ${
-            activeTab === 'today' || activeTab === 'courses'
+            currentTab === 'today' || currentTab === 'courses'
               ? 'overflow-hidden flex flex-col'
               : 'overflow-y-auto custom-scrollbar px-3.5 pb-4 pt-2'
           }`}

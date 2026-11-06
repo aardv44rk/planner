@@ -15,6 +15,7 @@ import {
   Check,
   KeyRound,
 } from 'lucide-react';
+import { useParams, useNavigate } from 'react-router';
 import { useLayoutStore } from '../stores/layoutStore';
 import { useThemeStore } from '../stores/themeStore';
 import { useCommandCenterStore } from '../stores/commandCenterStore';
@@ -74,12 +75,14 @@ const navTabs: NavItem[] = [
 ];
 
 export const Sidebar: React.FC = () => {
+  const { tab } = useParams<{ tab?: string }>();
+  const navigate = useNavigate();
   const {
     activeTab,
-    setActiveTab,
     isSidebarExpanded,
     toggleSidebar,
   } = useLayoutStore();
+  const currentTab: AppTab = tab && navTabs.some((t) => t.id === tab) ? (tab as AppTab) : activeTab;
 
   const { theme, toggleTheme } = useThemeStore();
   const {
@@ -141,7 +144,7 @@ export const Sidebar: React.FC = () => {
           {/* Brand Mark */}
           <button
             type="button"
-            onClick={() => setActiveTab('today')}
+            onClick={() => navigate('/today')}
             className="w-10 h-10 rounded-[10px] flex items-center justify-center text-accent font-bold text-xs tracking-tight mb-2 bg-surface-2 border border-subtle hover:border-accent hover:bg-elevated transition-all cursor-pointer shadow-subtle select-none"
             title="LifeOS Command Center"
           >
@@ -152,12 +155,12 @@ export const Sidebar: React.FC = () => {
           <nav className="grid gap-1 w-full" aria-label="Main Navigation">
             {navTabs.map((tab) => {
               const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
+              const isActive = currentTab === tab.id;
               return (
                 <button
                   type="button"
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => navigate(`/${tab.id}`)}
                   className={`w-full border-0 rounded-[9px] grid justify-items-center gap-1 py-2 px-0 transition-colors select-none ${
                     isActive
                       ? 'bg-accent-soft text-accent'
@@ -229,7 +232,7 @@ export const Sidebar: React.FC = () => {
           {/* Header showing Active Domain Tab title */}
           <div className="flex-shrink-0 h-[42px] px-3 bg-surface-3 border-b border-subtle flex items-center justify-between">
             <span className="text-[12px] font-semibold text-tx-primary truncate pr-1">
-              {navTabs.find((t) => t.id === activeTab)?.label ?? 'Workspace'}
+              {navTabs.find((t) => t.id === currentTab)?.label ?? 'Workspace'}
             </span>
             <span className="text-[10px] text-muted font-mono px-1.5 py-0.5 rounded-[6px] bg-surface border border-subtle flex-shrink-0">
               Ctrl+\
@@ -239,7 +242,7 @@ export const Sidebar: React.FC = () => {
           {/* Contextual Sub-navigation Content */}
           <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-3 space-y-3">
             {/* SUB-NAV 1: TODAY (Daily Focus & Portal Info) */}
-            {activeTab === 'today' && (
+            {currentTab === 'today' && (
               <div className="space-y-3">
                 <div className="space-y-2">
                   <span className="text-[11px] uppercase tracking-wider font-semibold text-muted block">
@@ -286,7 +289,7 @@ export const Sidebar: React.FC = () => {
             )}
 
             {/* SUB-NAV 2: COURSES & LMS */}
-            {activeTab === 'courses' && (
+            {currentTab === 'courses' && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] uppercase tracking-wider font-semibold text-muted">
@@ -379,7 +382,7 @@ export const Sidebar: React.FC = () => {
             )}
 
             {/* SUB-NAV 3: TASKS (Project Filters & Stats) */}
-            {activeTab === 'tasks' && (
+            {currentTab === 'tasks' && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] uppercase tracking-wider font-semibold text-muted">
@@ -410,7 +413,7 @@ export const Sidebar: React.FC = () => {
             )}
 
             {/* SUB-NAV 4: SCHEDULE */}
-            {activeTab === 'schedule' && (
+            {currentTab === 'schedule' && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] uppercase tracking-wider font-semibold text-muted">
@@ -439,7 +442,7 @@ export const Sidebar: React.FC = () => {
             )}
 
             {/* SUB-NAV 5: NOTES (Daily Notes History Tree) */}
-            {activeTab === 'notes' && (
+            {currentTab === 'notes' && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] uppercase tracking-wider font-semibold text-muted">
@@ -480,7 +483,7 @@ export const Sidebar: React.FC = () => {
             )}
 
             {/* SUB-NAV 6: HABITS */}
-            {activeTab === 'habits' && (
+            {currentTab === 'habits' && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] uppercase tracking-wider font-semibold text-muted">
@@ -513,7 +516,7 @@ export const Sidebar: React.FC = () => {
             )}
 
             {/* SUB-NAV 7: SETTINGS */}
-            {activeTab === 'settings' && (
+            {currentTab === 'settings' && (
               <div className="space-y-3">
                 <span className="text-[11px] uppercase tracking-wider font-semibold text-muted block">
                   Security & Accounts

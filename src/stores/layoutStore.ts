@@ -80,8 +80,14 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     try {
       const layout = await api.getLayout();
       if (layout) {
+        const hashTab = typeof window !== 'undefined' ? window.location.hash.replace(/^#\/?/, '').split('?')[0] : '';
+        const validTabs: AppTab[] = ['today', 'courses', 'tasks', 'schedule', 'notes', 'habits', 'settings'];
+        const activeTab = validTabs.includes(hashTab as AppTab)
+          ? (hashTab as AppTab)
+          : (layout.active_workspace as AppTab) || 'today';
+
         set({
-          activeTab: (layout.active_workspace as AppTab) || 'today',
+          activeTab,
           isSidebarExpanded: layout.sidebar_collapsed === false,
           paneSizes: layout.pane_sizes || get().paneSizes,
           isLoading: false,

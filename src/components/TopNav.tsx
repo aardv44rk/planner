@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useParams } from 'react-router';
 import { Search, Calendar } from 'lucide-react';
 import { useLayoutStore } from '../stores/layoutStore';
 import { useCommandCenterStore } from '../stores/commandCenterStore';
@@ -15,7 +16,9 @@ const tabTitles: Record<AppTab, string> = {
 };
 
 export const TopNav: React.FC = () => {
+  const { tab } = useParams<{ tab?: string }>();
   const { activeTab } = useLayoutStore();
+  const currentTab: AppTab = tab && (tab in tabTitles) ? (tab as AppTab) : activeTab;
   const { setCommandPaletteOpen, selectedDate } = useCommandCenterStore();
   const [formattedDate, setFormattedDate] = useState<string>('');
 
@@ -39,7 +42,7 @@ export const TopNav: React.FC = () => {
       {/* Left: Domain Breadcrumb & Date */}
       <div className="flex items-center space-x-2 text-xs">
         <span className="text-tx-primary font-semibold text-xs tracking-tight">
-          {tabTitles[activeTab]}
+          {tabTitles[currentTab]}
         </span>
         <span className="text-muted text-xs">·</span>
         <div className="flex items-center space-x-1.5 text-muted text-[11px]">

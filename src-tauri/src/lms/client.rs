@@ -487,6 +487,308 @@ fn extract_form_data(
     Ok((action_url, fields))
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MoodleFilemanagerConfig {
+    pub sesskey: String,
+    pub draft_itemid: String,
+    pub upload_repo_id: String,
+    pub ctx_id: Option<String>,
+    pub client_id: Option<String>,
+}
+
+pub fn guess_mime(filename: &str) -> &'static str {
+    let ext = filename.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    match ext.as_str() {
+        "pdf" => "application/pdf",
+        "zip" => "application/zip",
+        "tar" => "application/x-tar",
+        "gz" => "application/gzip",
+        "txt" => "text/plain",
+        "csv" => "text/csv",
+        "json" => "application/json",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "py" => "text/x-python",
+        "c" | "h" => "text/x-c",
+        "cpp" | "hpp" | "cc" => "text/x-c++",
+        "rs" => "text/x-rust",
+        "java" => "text/x-java-source",
+        "html" | "htm" => "text/html",
+        "css" => "text/css",
+        "js" => "application/javascript",
+        "ts" => "application/typescript",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        _ => "application/octet-stream",
+    }
+}
+
+pub fn parse_upload_repo_id(repos_val: &serde_json::Value) -> Option<String> {
+    if let Some(inner) = repos_val.get("repositories") {
+        if let Some(id) = parse_upload_repo_id(inner) {
+            return Some(id);
+        }
+    }
+
+    let check_entry = |entry: &serde_json::Value| -> Option<String> {
+        let type_match = entry.get("type").and_then(|v| v.as_str()) == Some("upload")
+            || entry
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(|n| n.to_ascii_lowercase().contains("upload"))
+                .unwrap_or(false);
+        if type_match {
+            if let Some(id_val) = entry.get("id") {
+                if let Some(id_num) = id_val.as_i64() {
+                    return Some(id_num.to_string());
+                } else if let Some(id_str) = id_val.as_str() {
+                    return Some(id_str.to_string());
+                }
+            }
+        }
+        None
+    };
+
+    if let Some(id) = check_entry(repos_val) {
+        return Some(id);
+    }
+
+    if let Some(map) = repos_val.as_object() {
+        for (_k, entry) in map {
+            if let Some(id) = check_entry(entry) {
+                return Some(id);
+            }
+        }
+    } else if let Some(arr) = repos_val.as_array() {
+        for entry in arr {
+            if let Some(id) = check_entry(entry) {
+                return Some(id);
+            }
+        }
+    }
+    None
+}
+
+pub fn extract_balanced_json(input: &str, start_pos: usize) -> Option<&str> {
+    let bytes = input.as_bytes();
+    let mut i = start_pos;
+    while i < bytes.len() && bytes[i] != b'{' && bytes[i] != b'[' {
+        i += 1;
+    }
+    if i >= bytes.len() {
+        return None;
+    }
+
+    let open_char = bytes[i];
+    let close_char = if open_char == b'{' { b'}' } else { b']' };
+    let start_idx = i;
+    let mut depth = 0;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if b == b'\\' {
+                escaped = true;
+            } else if b == b'"' {
+                in_string = false;
+            }
+        } else if b == b'"' {
+            in_string = true;
+        } else if b == open_char {
+            depth += 1;
+        } else if b == close_char {
+            depth -= 1;
+            if depth == 0 {
+                return Some(&input[start_idx..=i]);
+            }
+        }
+        i += 1;
+    }
+
+    None
+}
+
+pub fn extract_moodle_filemanager_config(html: &str) -> Result<MoodleFilemanagerConfig> {
+    let mut upload_repo_id = None;
+    let mut extracted_client_id = None;
+    let mut extracted_itemid = None;
+    let mut extracted_ctx_id = None;
+
+    // Search for filemanager init JS calls
+    for pattern in ["form_filemanager.init", "filepicker.init", "form_filemanager"] {
+        for (idx, _) in html.match_indices(pattern) {
+            if let Some(json_str) = extract_balanced_json(html, idx + pattern.len()) {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
+                    if upload_repo_id.is_none() {
+                        upload_repo_id = parse_upload_repo_id(&val);
+                    }
+                    if extracted_client_id.is_none() {
+                        extracted_client_id = val.get("client_id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    }
+                    if extracted_itemid.is_none() {
+                        extracted_itemid = val.get("itemid").and_then(|v| {
+                            if let Some(n) = v.as_i64() {
+                                Some(n.to_string())
+                            } else {
+                                v.as_str().map(|s| s.to_string())
+                            }
+                        });
+                    }
+                    if extracted_ctx_id.is_none() {
+                        extracted_ctx_id = val.get("contextid").or_else(|| val.get("ctx_id")).and_then(|v| {
+                            if let Some(n) = v.as_i64() {
+                                Some(n.to_string())
+                            } else {
+                                v.as_str().map(|s| s.to_string())
+                            }
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // Direct search for repositories key if upload repo ID not yet found
+    if upload_repo_id.is_none() {
+        for pattern in ["\"repositories\"", "'repositories'"] {
+            for (idx, _) in html.match_indices(pattern) {
+                if let Some(json_str) = extract_balanced_json(html, idx + pattern.len()) {
+                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
+                        if let Some(id) = parse_upload_repo_id(&val) {
+                            upload_repo_id = Some(id);
+                            break;
+                        }
+                    }
+                }
+            }
+            if upload_repo_id.is_some() {
+                break;
+            }
+        }
+    }
+
+    // Unescape HTML quotes fallback if still not found
+    if upload_repo_id.is_none() && html.contains("&quot;repositories&quot;") {
+        let unescaped = html.replace("&quot;", "\"");
+        for (idx, _) in unescaped.match_indices("\"repositories\"") {
+            if let Some(json_str) = extract_balanced_json(&unescaped, idx + "\"repositories\"".len()) {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
+                    if let Some(id) = parse_upload_repo_id(&val) {
+                        upload_repo_id = Some(id);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    let upload_repo_id = upload_repo_id
+        .ok_or_else(|| anyhow!("Could not find Moodle upload repository ID with type 'upload'"))?;
+
+    // Parse HTML DOM for form fields
+    let doc = Html::parse_document(html);
+
+    // sesskey
+    let mut sesskey = None;
+    if let Ok(sel) = Selector::parse("input[name=\"sesskey\"]") {
+        if let Some(el) = doc.select(&sel).next() {
+            if let Some(val) = el.value().attr("value") {
+                if !val.is_empty() {
+                    sesskey = Some(val.to_string());
+                }
+            }
+        }
+    }
+    if sesskey.is_none() {
+        static SESSKEY_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let re = SESSKEY_RE.get_or_init(|| regex::Regex::new(r#""sesskey"\s*:\s*"([A-Za-z0-9]{1,64})""#).unwrap());
+        if let Some(caps) = re.captures(html) {
+            sesskey = caps.get(1).map(|m| m.as_str().to_string());
+        }
+    }
+    if sesskey.is_none() {
+        static SESSKEY_QUERY_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let re = SESSKEY_QUERY_RE.get_or_init(|| regex::Regex::new(r#"sesskey=([A-Za-z0-9]{1,64})"#).unwrap());
+        if let Some(caps) = re.captures(html) {
+            sesskey = caps.get(1).map(|m| m.as_str().to_string());
+        }
+    }
+    let sesskey = sesskey.ok_or_else(|| anyhow!("Could not extract active Moodle sesskey from assignment page"))?;
+
+    // draft_itemid
+    let mut draft_itemid = None;
+    if let Ok(sel) = Selector::parse("input[name=\"files_filemanager\"]") {
+        if let Some(el) = doc.select(&sel).next() {
+            if let Some(val) = el.value().attr("value") {
+                if !val.is_empty() {
+                    draft_itemid = Some(val.to_string());
+                }
+            }
+        }
+    }
+    if draft_itemid.is_none() {
+        draft_itemid = extracted_itemid;
+    }
+    if draft_itemid.is_none() {
+        static ITEMID_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let re = ITEMID_RE.get_or_init(|| regex::Regex::new(r#""itemid"\s*:\s*"?(\d+)"?"#).unwrap());
+        if let Some(caps) = re.captures(html) {
+            draft_itemid = caps.get(1).map(|m| m.as_str().to_string());
+        }
+    }
+    let draft_itemid = draft_itemid.ok_or_else(|| anyhow!("Could not extract Moodle draft itemid from assignment page"))?;
+
+    // ctx_id
+    let mut ctx_id = extracted_ctx_id;
+    if ctx_id.is_none() {
+        for name in ["contextid", "ctx_id", "context_id"] {
+            if let Ok(sel) = Selector::parse(&format!("input[name=\"{}\"]", name)) {
+                if let Some(el) = doc.select(&sel).next() {
+                    if let Some(val) = el.value().attr("value") {
+                        if !val.is_empty() {
+                            ctx_id = Some(val.to_string());
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if ctx_id.is_none() {
+        static CTX_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let re = CTX_RE.get_or_init(|| regex::Regex::new(r#""(?:contextid|ctx_id)"\s*:\s*"?(\d+)"?"#).unwrap());
+        if let Some(caps) = re.captures(html) {
+            ctx_id = caps.get(1).map(|m| m.as_str().to_string());
+        }
+    }
+
+    // client_id
+    let mut client_id = extracted_client_id;
+    if client_id.is_none() {
+        static CID_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let re = CID_RE.get_or_init(|| regex::Regex::new(r#""client_id"\s*:\s*"([A-Za-z0-9_]+)""#).unwrap());
+        if let Some(caps) = re.captures(html) {
+            client_id = caps.get(1).map(|m| m.as_str().to_string());
+        }
+    }
+
+    Ok(MoodleFilemanagerConfig {
+        sesskey,
+        draft_itemid,
+        upload_repo_id,
+        ctx_id,
+        client_id,
+    })
+}
+
 /// Silently uploads an assignment submission through Moodle's real repository draft and submission flow.
 pub async fn upload_assignment(
     config_dir: &Path,
@@ -525,80 +827,45 @@ pub async fn upload_assignment(
     let edit_html = edit_resp.text().await
         .map_err(|e| anyhow!("Failed to read assignment edit page HTML: {}", e))?;
 
-    // Step B: Extract sesskey, hidden files_filemanager draft itemid, client_id
-    let (sesskey, draft_itemid, client_id) = {
-        let doc = Html::parse_document(&edit_html);
-        let mut sess: Option<String> = None;
-        let mut draft: Option<String> = None;
+    // Step B: Extract Moodle filemanager config (sesskey, draft itemid, upload repo ID, ctx_id, client_id)
+    let config = extract_moodle_filemanager_config(&edit_html)?;
 
-        if let Ok(sel) = Selector::parse("input[name=\"files_filemanager\"]") {
-            if let Some(el) = doc.select(&sel).next() {
-                if let Some(val) = el.value().attr("value") {
-                    if !val.is_empty() {
-                        draft = Some(val.to_string());
-                    }
-                }
-            }
-        }
-
-        if let Ok(sel) = Selector::parse("input[name=\"sesskey\"]") {
-            if let Some(el) = doc.select(&sel).next() {
-                if let Some(val) = el.value().attr("value") {
-                    if !val.is_empty() {
-                        sess = Some(val.to_string());
-                    }
-                }
-            }
-        }
-
-        if sess.is_none() {
-            static SESSKEY_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-            let re = SESSKEY_RE.get_or_init(|| regex::Regex::new(r#""sesskey":"([A-Za-z0-9]{1,64})""#).unwrap());
-            if let Some(caps) = re.captures(&edit_html) {
-                sess = caps.get(1).map(|m| m.as_str().to_string());
-            }
-        }
-
-        let draft_val = draft.unwrap_or_else(|| {
-            static ITEMID_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-            let re = ITEMID_RE.get_or_init(|| regex::Regex::new(r#""itemid":(\d+)"#).unwrap());
-            re.captures(&edit_html)
-                .and_then(|c| c.get(1))
-                .map(|m| m.as_str().to_string())
-                .unwrap_or_else(|| format!("{}", (chrono::Utc::now().timestamp_millis() % 900000000) + 100000000))
-        });
-
-        static CLIENT_ID_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-        let cid_re = CLIENT_ID_RE.get_or_init(|| regex::Regex::new(r#""client_id":"([A-Za-z0-9_]+)""#).unwrap());
-        let cid = cid_re.captures(&edit_html)
-            .and_then(|c| c.get(1))
-            .map(|m| m.as_str().to_string())
-            .unwrap_or_else(|| uuid::Uuid::new_v4().simple().to_string());
-
-        (sess, draft_val, cid)
-    };
-
-    let sesskey = sesskey.ok_or_else(|| anyhow!("Could not extract active Moodle sesskey from assignment page"))?;
-
-    log::info!("Extracted Moodle draft itemid: {}, sesskey: {}, client_id: {}", draft_itemid, sesskey, client_id);
+    log::info!(
+        "Extracted Moodle config - draft itemid: {}, upload_repo_id: {}, sesskey: {}, ctx_id: {:?}, client_id: {:?}",
+        config.draft_itemid,
+        config.upload_repo_id,
+        config.sesskey,
+        config.ctx_id,
+        config.client_id
+    );
 
     // Step C: POST the file via multipart/form-data to repository_ajax.php?action=upload
     let repo_upload_url = format!("{}/repository/repository_ajax.php?action=upload", LMS_BASE);
+    let mime_type = guess_mime(&filename);
     let part = Part::bytes(bytes)
         .file_name(filename.clone())
-        .mime_str("application/octet-stream")
+        .mime_str(mime_type)
         .map_err(|e| anyhow!("Failed to set MIME type: {}", e))?;
 
-    let repo_form = Form::new()
+    let mut repo_form = Form::new()
         .text("repo_upload_file", filename.clone())
-        .text("sesskey", sesskey.clone())
-        .text("itemid", draft_itemid.clone())
+        .text("sesskey", config.sesskey.clone())
+        .text("itemid", config.draft_itemid.clone())
+        .text("repo_id", config.upload_repo_id.clone())
         .text("filepath", "/")
-        .text("client_id", client_id.clone())
-        .text("repo_id", "4")
+        .text("savepath", "/")
+        .text("overwrite", "1")
         .text("title", filename.clone())
-        .text("author", "Student")
-        .part("repo_upload_file", part);
+        .text("author", "Student");
+
+    if let Some(ref cid) = config.client_id {
+        repo_form = repo_form.text("client_id", cid.clone());
+    }
+    if let Some(ref ctx) = config.ctx_id {
+        repo_form = repo_form.text("ctx_id", ctx.clone());
+    }
+
+    repo_form = repo_form.part("repo_upload_file", part);
 
     let repo_resp = client.post(&repo_upload_url).multipart(repo_form).send().await
         .map_err(|e| anyhow!("Failed to POST draft file to Moodle repository: {}", e))?;
@@ -607,7 +874,23 @@ pub async fn upload_assignment(
         .map_err(|e| anyhow!("Failed to read Moodle repository JSON response: {}", e))?;
 
     log::info!("Repository upload response: {}", repo_json_text);
-    if repo_json_text.contains("\"error\"") && !repo_json_text.contains("\"error\":false") {
+
+    // Check for error in JSON response
+    if let Ok(repo_val) = serde_json::from_str::<serde_json::Value>(&repo_json_text) {
+        if let Some(err) = repo_val.get("error") {
+            if !err.is_null() {
+                if let Some(err_str) = err.as_str() {
+                    if !err_str.is_empty() {
+                        return Err(anyhow!("Moodle repository upload rejected file: {}", err_str));
+                    }
+                } else if let Some(err_bool) = err.as_bool() {
+                    if err_bool {
+                        return Err(anyhow!("Moodle repository upload rejected file: {}", repo_json_text));
+                    }
+                }
+            }
+        }
+    } else if repo_json_text.contains("\"error\"") && !repo_json_text.contains("\"error\":false") {
         return Err(anyhow!("Moodle repository upload rejected file: {}", repo_json_text));
     }
 
@@ -616,9 +899,10 @@ pub async fn upload_assignment(
     let save_fields = [
         ("id", assignment_id),
         ("action", "savesubmission"),
-        ("sesskey", &sesskey),
-        ("files_filemanager", &draft_itemid),
+        ("sesskey", &config.sesskey),
+        ("files_filemanager", &config.draft_itemid),
         ("_qf__mod_assign_submission_form", "1"),
+        ("submitbutton", "Save changes"),
     ];
 
     let save_resp = client.post(&save_url).form(&save_fields).send().await
@@ -626,14 +910,15 @@ pub async fn upload_assignment(
     let save_html = save_resp.text().await.unwrap_or_default();
 
     // Step E: If assignment page requires final confirmation (action="submit"), submit it
-    if save_html.contains("action=\"submit\"") || save_html.contains("name=\"submitbutton\"") && save_html.contains("submit") {
+    if save_html.contains("action=\"submit\"") || (save_html.contains("name=\"submitbutton\"") && save_html.contains("submit")) {
         log::info!("Final submission confirmation required. Confirming submission...");
         let confirm_fields = [
             ("id", assignment_id),
             ("action", "submit"),
-            ("sesskey", &sesskey),
+            ("sesskey", &config.sesskey),
             ("confirm", "1"),
             ("_qf__mod_assign_confirm_form", "1"),
+            ("submitbutton", "Save changes"),
         ];
         let _ = client.post(&save_url).form(&confirm_fields).send().await;
     }
@@ -872,3 +1157,8 @@ fn extract_matrix_coordinates(html: &str) -> Vec<(usize, usize)> {
     }
     coords
 }
+
+#[cfg(test)]
+#[path = "../tests/moodle_upload_tests.rs"]
+mod tests;
+

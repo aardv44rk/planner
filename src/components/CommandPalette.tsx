@@ -16,6 +16,7 @@ import {
   Sparkles,
   KeyRound,
 } from 'lucide-react';
+import { useNavigate } from 'react-router';
 import { useCommandCenterStore } from '../stores/commandCenterStore';
 import { useThemeStore } from '../stores/themeStore';
 import { useLayoutStore } from '../stores/layoutStore';
@@ -39,7 +40,8 @@ export const CommandPalette: React.FC = () => {
   } = useCommandCenterStore();
 
   const { theme, toggleTheme } = useThemeStore();
-  const { toggleEditMode, resetLayout, setActiveTab } = useLayoutStore();
+  const { toggleEditMode, resetLayout } = useLayoutStore();
+  const navigate = useNavigate();
 
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -99,7 +101,7 @@ export const CommandPalette: React.FC = () => {
       icon: CalendarDays,
       shortcut: '1',
       action: () => {
-        setActiveTab('today');
+        navigate('/today');
         setCommandPaletteOpen(false);
       },
     },
@@ -110,7 +112,7 @@ export const CommandPalette: React.FC = () => {
       icon: BookOpen,
       shortcut: '2',
       action: () => {
-        setActiveTab('courses');
+        navigate('/courses');
         setCommandPaletteOpen(false);
       },
     },
@@ -121,7 +123,7 @@ export const CommandPalette: React.FC = () => {
       icon: CheckSquare,
       shortcut: '3',
       action: () => {
-        setActiveTab('tasks');
+        navigate('/tasks');
         setCommandPaletteOpen(false);
       },
     },
@@ -132,7 +134,7 @@ export const CommandPalette: React.FC = () => {
       icon: Clock,
       shortcut: '4',
       action: () => {
-        setActiveTab('schedule');
+        navigate('/schedule');
         setCommandPaletteOpen(false);
       },
     },
@@ -143,7 +145,7 @@ export const CommandPalette: React.FC = () => {
       icon: FileText,
       shortcut: '5',
       action: () => {
-        setActiveTab('notes');
+        navigate('/notes');
         setCommandPaletteOpen(false);
       },
     },
@@ -154,7 +156,7 @@ export const CommandPalette: React.FC = () => {
       icon: Sparkles,
       shortcut: '6',
       action: () => {
-        setActiveTab('habits');
+        navigate('/habits');
         setCommandPaletteOpen(false);
       },
     },
@@ -165,7 +167,7 @@ export const CommandPalette: React.FC = () => {
       icon: KeyRound,
       shortcut: '7',
       action: () => {
-        setActiveTab('settings');
+        navigate('/settings');
         setCommandPaletteOpen(false);
       },
     },
